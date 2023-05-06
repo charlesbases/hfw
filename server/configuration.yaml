@@ -1,0 +1,27 @@
+name: 'app'
+port: ':8080'
+spec:
+  logging:
+    minlevel: 'debug'
+  metrics:
+    enabled: true
+  jwt:
+    enabled: true
+    secret: 'app'
+    intercept:
+      enabled: true
+      includes:
+      excludes:
+      - '/metrics'
+  plugins:
+    broker:
+      enabled: true
+      type: 'nats'
+    database:
+      enabled: true
+      type: 'mysql'
+      debug: true
+      timeout: 3
+      addrs:
+      - ''
+data:
