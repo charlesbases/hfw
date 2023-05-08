@@ -9,6 +9,8 @@ import (
 const (
 	// defaultRegion self-built
 	defaultRegion = "self-built"
+	// defaultLimit default limit
+	defaultLimit = 1 << 10
 )
 
 var (
@@ -32,12 +34,20 @@ type Object interface {
 	Decoding(pointer interface{}) error
 }
 
+type Objects interface {
+	Keys() []string
+	List() []Object
+	Compress() error
+}
+
 type Store interface {
-	Put(path string, obj Object, opts ...PutOption) error
-	Get(path string, opts ...GetOption) (Object, error)
-	Del(path string, opts ...DelOption) error
-	List(prefix string, opts ...ListOption) ([]string, error)
+	Put(key string, obj Object, opts ...PutOption) error
+	Get(key string, opts ...GetOption) (Object, error)
+	Del(key string, opts ...DelOption) error
+	List(key string, opts ...ListOption) (Objects, error)
+
 	Options() *Options
+	Name() string
 }
 
 // Options .
@@ -112,8 +122,8 @@ type GetOptions struct {
 	Context context.Context
 	// Bucket bucket
 	Bucket string
-	// Version data version
-	Version string
+	// VersionID data version
+	VersionID string
 }
 
 // GetOption .
@@ -133,10 +143,10 @@ func GetBucket(bucket string) GetOption {
 	}
 }
 
-// GetVersion .
-func GetVersion(ver string) GetOption {
+// GetVersionID .
+func GetVersionID(ver string) GetOption {
 	return func(o *GetOptions) {
-		o.Version = ver
+		o.VersionID = ver
 	}
 }
 
@@ -146,8 +156,11 @@ type ListOptions struct {
 	Context context.Context
 	// Bucket bucket
 	Bucket string
-	// MaxKeys limit keys
-	MaxKeys int
+	// Limit 返回的 key 列表。
+	// 如果这个值为 '-1'，则不做返回 key 的数量限制。但如果实际 key 过多，将极大的影响性能。
+	Limit int64
+	// Recursive 递归列出子文件夹内文件
+	Recursive bool
 }
 
 type ListOption func(o *ListOptions)
@@ -156,7 +169,7 @@ type ListOption func(o *ListOptions)
 func DefaultListOptions() *ListOptions {
 	return &ListOptions{
 		Context: defaultContext,
-		MaxKeys: 1 << 10,
+		Limit:   defaultLimit,
 	}
 }
 
@@ -166,12 +179,30 @@ func ListBucket(bucket string) ListOption {
 	}
 }
 
+// ListLimit .
+func ListLimit(limit int64) ListOption {
+	return func(o *ListOptions) {
+		o.Limit = limit
+	}
+}
+
+// ListRecursive .
+func ListRecursive() ListOption {
+	return func(o *ListOptions) {
+		o.Recursive = true
+	}
+}
+
 // DelOptions .
 type DelOptions struct {
 	// Context .
 	Context context.Context
 	// Bucket bucket
 	Bucket string
+	// VersionID version id
+	VersionID string
+	// Prefix 根据前缀删除
+	Prefix bool
 }
 
 type DelOption func(o *DelOptions)
@@ -187,5 +218,19 @@ func DefaultDelOptions() *DelOptions {
 func DelBucket(bucket string) DelOption {
 	return func(o *DelOptions) {
 		o.Bucket = bucket
+	}
+}
+
+// DelVersionID .
+func DelVersionID(ver string) DelOption {
+	return func(o *DelOptions) {
+		o.VersionID = ver
+	}
+}
+
+// DelPrefix .
+func DelPrefix() DelOption {
+	return func(o *DelOptions) {
+		o.Prefix = true
 	}
 }

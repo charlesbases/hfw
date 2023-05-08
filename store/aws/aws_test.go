@@ -131,3 +131,23 @@ func TestGet(t *testing.T) {
 
 	}
 }
+
+func TestDel(t *testing.T) {
+	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
+
+	if err := cli.Del("testdata/data/", store.DelBucket("mxdata")); err != nil {
+		logger.Fatal(err)
+	}
+}
+
+func TestList(t *testing.T) {
+	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
+
+	objs, err := cli.List("testdata", store.ListBucket("mxdata"), store.ListLimit(6))
+	if err != nil {
+		logger.Fatal(err)
+	}
+	for _, key := range objs.Keys() {
+		logger.Debug(key)
+	}
+}

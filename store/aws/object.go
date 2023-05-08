@@ -8,21 +8,12 @@ import (
 	"os"
 	"strings"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/charlesbases/hfw/content"
 	"github.com/charlesbases/hfw/store"
 	"github.com/golang/protobuf/proto"
 )
-
-type Object interface {
-	length() int64
-	readSeeker() io.ReadSeeker
-	readCloser() io.ReadCloser
-	contentType() content.Type
-	error() error
-	deferFunc() func()
-
-	Decoding(pointer interface{}) error
-}
 
 // object .
 type object struct {
@@ -96,7 +87,7 @@ func (o *object) Decoding(pointer interface{}) error {
 }
 
 // readCloser .
-func readCloser(rc io.ReadCloser, size int64, opts ...ObjectOption) Object {
+func readCloser(rc io.ReadCloser, size int64, opts ...ObjectOption) *object {
 	var object = &object{
 		rc:   rc,
 		ct:   content.TYPE_STREAM,
@@ -125,7 +116,7 @@ func WithDeferFunc(fn func()) ObjectOption {
 }
 
 // File .
-func File(filepath string) Object {
+func File(filepath string) store.Object {
 	if file, err := os.Open(filepath); err != nil {
 		return &object{err: err}
 	} else {
@@ -140,7 +131,7 @@ func File(filepath string) Object {
 }
 
 // Bytes .
-func Bytes(v []byte) Object {
+func Bytes(v []byte) store.Object {
 	return &object{
 		rs:   bytes.NewReader(v),
 		ct:   content.TYPE_BYTES,
@@ -149,7 +140,7 @@ func Bytes(v []byte) Object {
 }
 
 // ReadSeeker .
-func ReadSeeker(rs io.ReadSeeker, size int64, opts ...ObjectOption) Object {
+func ReadSeeker(rs io.ReadSeeker, size int64, opts ...ObjectOption) store.Object {
 	var object = &object{
 		rs:   rs,
 		ct:   content.TYPE_STREAM,
@@ -162,7 +153,7 @@ func ReadSeeker(rs io.ReadSeeker, size int64, opts ...ObjectOption) Object {
 }
 
 // Boolean .
-func Boolean(v bool) Object {
+func Boolean(v bool) store.Object {
 	var rs *strings.Reader
 	if v {
 		rs = strings.NewReader("1")
@@ -178,7 +169,7 @@ func Boolean(v bool) Object {
 }
 
 // Number .
-func Number(v interface{}) Object {
+func Number(v interface{}) store.Object {
 	switch v.(type) {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 		return String(fmt.Sprintf("%v", v))
@@ -188,7 +179,7 @@ func Number(v interface{}) Object {
 }
 
 // String .
-func String(v string) Object {
+func String(v string) store.Object {
 	return &object{
 		rs:   strings.NewReader(v),
 		ct:   content.TYPE_TEXT,
@@ -197,7 +188,7 @@ func String(v string) Object {
 }
 
 // MarshalJson .
-func MarshalJson(v interface{}) Object {
+func MarshalJson(v interface{}) store.Object {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return &object{err: err}
@@ -210,7 +201,7 @@ func MarshalJson(v interface{}) Object {
 }
 
 // MarshalProto .
-func MarshalProto(v proto.Message) Object {
+func MarshalProto(v proto.Message) store.Object {
 	data, err := proto.Marshal(v)
 	if err != nil {
 		return &object{err: err}
@@ -220,4 +211,37 @@ func MarshalProto(v proto.Message) Object {
 		ct:   content.TYPE_PROTO,
 		size: int64(len(data)),
 	}
+}
+
+// objects .
+type objects struct {
+	c *client
+
+	size int64
+	keys []string
+}
+
+// stats .
+func (o *objects) stats(output *s3.ListObjectsOutput) {
+	for _, obj := range output.Contents {
+		o.keys = append(o.keys, aws.StringValue(obj.Key))
+	}
+
+	o.size += int64(len(output.Contents))
+}
+
+// Keys .
+func (o *objects) Keys() []string {
+	return o.keys
+}
+
+// List .
+func (o *objects) List() []store.Object {
+	o.Keys()
+	return nil
+}
+
+// Compress .
+func (o *objects) Compress() error {
+	return nil
 }
