@@ -1,8 +1,10 @@
 package aws
 
 import (
+	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/charlesbases/hfw/store"
 	"github.com/charlesbases/logger"
@@ -135,19 +137,41 @@ func TestGet(t *testing.T) {
 func TestDel(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
 
-	if err := cli.Del("testdata/data/", store.DelBucket("mxdata")); err != nil {
+	if err := cli.Del("testdata/data/", store.DelBucket("mxdata"), store.DelRecursive()); err != nil {
 		logger.Fatal(err)
 	}
+
+	time.Sleep(time.Hour)
 }
 
 func TestList(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
 
-	objs, err := cli.List("testdata", store.ListBucket("mxdata"), store.ListLimit(6))
+	objs, err := cli.List("testdata", store.ListBucket("mxdata"), store.ListLimit(-1))
 	if err != nil {
 		logger.Fatal(err)
 	}
 	for _, key := range objs.Keys() {
 		logger.Debug(key)
 	}
+	fmt.Println("++++++++")
+	for _, obj := range objs.List() {
+		logger.Debug(fmt.Sprintf("%T", obj))
+	}
+}
+
+func TestIsExist(t *testing.T) {
+	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
+
+	isExist, err := cli.IsExist("testdata", store.GetBucket("mxdata"))
+	if err != nil {
+		logger.Fatal(err)
+	}
+	fmt.Println(isExist)
+}
+
+func TestPresign(t *testing.T) {
+	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
+
+	cli.Presign("testdata/data/message", store.PresignBucket("mxdata"))
 }

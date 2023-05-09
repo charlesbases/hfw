@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/charlesbases/hfw/content"
 	"github.com/charlesbases/hfw/store"
+	"github.com/charlesbases/logger"
 	"github.com/golang/protobuf/proto"
 )
 
@@ -215,30 +216,40 @@ func MarshalProto(v proto.Message) store.Object {
 
 // objects .
 type objects struct {
-	c *client
-
+	c    *client
 	size int64
-	keys []string
-}
+	opts *store.ListOptions
 
-// stats .
-func (o *objects) stats(output *s3.ListObjectsOutput) {
-	for _, obj := range output.Contents {
-		o.keys = append(o.keys, aws.StringValue(obj.Key))
-	}
-
-	o.size += int64(len(output.Contents))
+	list func(func(objectKey string) error) error
 }
 
 // Keys .
 func (o *objects) Keys() []string {
-	return o.keys
+	var keys = make([]string, 0, o.size)
+	o.list(func(objectKey string) error {
+		keys = append(keys, objectKey)
+		return nil
+	})
+	return keys
 }
 
 // List .
 func (o *objects) List() []store.Object {
-	o.Keys()
-	return nil
+	var objs = make([]store.Object, 0, o.size)
+	o.list(func(objectKey string) error {
+		output, err := o.c.cli.GetObject(&s3.GetObjectInput{
+			Bucket: aws.String(o.opts.Bucket),
+			Key:    aws.String(objectKey),
+		})
+		if err != nil {
+			logger.Errorf("[%s] list.object(%s.%s) failed. %v", o.c.Name(), o.opts.Bucket, objectKey, err)
+			return err
+		}
+
+		objs = append(objs, readCloser(output.Body, *output.ContentLength, WithContentType(content.String(*output.ContentType)), WithDeferFunc(func() { output.Body.Close() })))
+		return nil
+	})
+	return objs
 }
 
 // Compress .

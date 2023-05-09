@@ -5,8 +5,10 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -116,7 +118,7 @@ func (c *client) Get(key string, opts ...store.GetOption) (store.Object, error) 
 
 	logger.Debugf("[%s] get(%s.%s)", c.Name(), gopts.Bucket, key)
 
-	object, err := c.cli.GetObject(&s3.GetObjectInput{
+	output, err := c.cli.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(gopts.Bucket),
 		Key:    aws.String(key),
 	})
@@ -125,7 +127,7 @@ func (c *client) Get(key string, opts ...store.GetOption) (store.Object, error) 
 		return nil, err
 	}
 
-	return readCloser(object.Body, *object.ContentLength, WithContentType(content.String(*object.ContentType)), WithDeferFunc(func() { object.Body.Close() })), nil
+	return readCloser(output.Body, *output.ContentLength, WithContentType(content.String(*output.ContentType)), WithDeferFunc(func() { output.Body.Close() })), nil
 }
 
 // Del .
@@ -139,17 +141,38 @@ func (c *client) Del(key string, opts ...store.DelOption) error {
 		return store.ErrInvalidBucketName
 	}
 
-	logger.Debugf("[%s] get(%s.%s)", c.Name(), dopts.Bucket, key)
+	logger.Debugf("[%s] del(%s.%s)", c.Name(), dopts.Bucket, key)
 
-	_, err := c.cli.DeleteObject(&s3.DeleteObjectInput{
-		Bucket:    aws.String(dopts.Bucket),
-		Key:       aws.String(key),
-		VersionId: aws.String(dopts.VersionID),
-	})
-	if err != nil {
-		logger.Errorf("[%s] del(%s.%s) failed. %v", c.Name(), dopts.Bucket, key, err)
-		return err
+	// 只删除指定 key
+	if !dopts.Recursive {
+		_, err := c.cli.DeleteObject(&s3.DeleteObjectInput{
+			Bucket:    aws.String(dopts.Bucket),
+			Key:       aws.String(key),
+			VersionId: aws.String(dopts.VersionID),
+		})
+		if err != nil {
+			logger.Errorf("[%s] del(%s.%s) failed. %v", c.Name(), dopts.Bucket, key, err)
+			return err
+		}
+	} else {
+		objs, err := c.List(key, store.ListBucket(dopts.Bucket), store.ListRecursive(), store.ListLimit(-1))
+		if err != nil {
+			logger.Errorf("[%s] del(%s.%s) failed. %v", c.Name(), dopts.Bucket, key, err)
+			return err
+		}
+		go func() {
+			for _, obj := range objs.Keys() {
+				_, err := c.cli.DeleteObject(&s3.DeleteObjectInput{
+					Bucket: aws.String(dopts.Bucket),
+					Key:    aws.String(obj),
+				})
+				if err != nil {
+					logger.Errorf("[%s] del(%s.%s) failed. %v", c.Name(), dopts.Bucket, obj, err)
+				}
+			}
+		}()
 	}
+
 	return nil
 }
 
@@ -178,49 +201,105 @@ func (c *client) List(key string, opts ...store.ListOption) (store.Objects, erro
 	if lopts.Limit > -1 && lopts.Limit < limit {
 		limit = lopts.Limit
 	}
-	input := &s3.ListObjectsInput{
-		Bucket:  aws.String(lopts.Bucket),
-		Prefix:  aws.String(key),
-		MaxKeys: aws.Int64(limit),
-	}
 
-	var objects = &objects{c: c, keys: make([]string, 0, limit)}
-
-	for {
-		output, err := c.cli.ListObjects(input)
-		if err != nil {
-			logger.Errorf("[%s] list(%s.%s) failed. %v", c.Name(), lopts.Bucket, key, err)
-			return nil, err
-		}
-
-		objects.stats(output)
-
-		switch {
-		// 已查询到足量的数据，退出循环（不管数据是否被截断）。
-		case objects.size == lopts.Limit:
-			break
-		// 未获取到足量的数据，并且数据被截断
-		case aws.BoolValue(output.IsTruncated):
-			input.Marker = output.NextMarker
-
-			// 再次查询时，根据情况判断是否需要改变 MaxKey
-			// 1. lopts.Limit == 1
-			//    查询全部数据，不用改变 MaxKey
-			// 2. (lopts.Limit-objects.size) >= limit
-			//    不用改变 MaxKey
-			// 3. (lopts.Limit-objects.size) < limit
-			//    设置 MaxKey, 以获取需要的数据量
-			if (lopts.Limit > 0) && (lopts.Limit-objects.size) < limit {
-				input.MaxKeys = aws.Int64(lopts.Limit - objects.size)
+	return &objects{
+		c:    c,
+		size: limit,
+		opts: lopts,
+		list: func(fn func(string) error) error {
+			input := &s3.ListObjectsInput{
+				Bucket:  aws.String(lopts.Bucket),
+				Prefix:  aws.String(key),
+				MaxKeys: aws.Int64(limit),
 			}
-			continue
-		}
 
-		// 未获取到足量数据，但已获取相关 key 的全部数据，退出循环
-		break
+			var currentSize int64
+
+			for {
+				output, err := c.cli.ListObjects(input)
+				if err != nil {
+					logger.Errorf("[%s] list(%s.%s) failed. %v", c.Name(), lopts.Bucket, key, err)
+					return err
+				}
+
+				for _, object := range output.Contents {
+					if err := fn(aws.StringValue(object.Key)); err != nil {
+						return err
+					}
+				}
+
+				switch {
+				// 已查询到足量的数据，退出循环（不管数据是否被截断）。
+				case currentSize == lopts.Limit:
+					break
+				// 未获取到足量的数据，并且数据被截断
+				case aws.BoolValue(output.IsTruncated):
+					input.Marker = output.NextMarker
+
+					// 再次查询时，根据情况判断是否需要改变 MaxKey
+					// 1. lopts.Limit == 1
+					//    查询全部数据，不用改变 MaxKey
+					// 2. (lopts.Limit-objects.size) >= limit
+					//    不用改变 MaxKey
+					// 3. (lopts.Limit-objects.size) < limit
+					//    设置 MaxKey, 以获取需要的数据量
+					if (lopts.Limit > 0) && (lopts.Limit-currentSize) < limit {
+						input.MaxKeys = aws.Int64(lopts.Limit - currentSize)
+					}
+					continue
+				}
+
+				// 未获取到足量数据，但已获取相关 key 的全部数据，退出循环
+				break
+			}
+
+			return nil
+		},
+	}, nil
+}
+
+// Presign .
+func (c *client) Presign(key string, opts ...store.PresignOption) (string, error) {
+	var popts = store.DefaultPresignOptions()
+	for _, opt := range opts {
+		opt(popts)
 	}
 
-	return objects, nil
+	if len(popts.Bucket) == 0 {
+		return "", store.ErrInvalidBucketName
+	}
+
+	request, _ := c.cli.GetObjectRequest(&s3.GetObjectInput{
+		Bucket: aws.String(popts.Bucket),
+		Key:    aws.String(key),
+	})
+	return request.Presign(time.Hour * 24)
+}
+
+// IsExist .
+func (c *client) IsExist(key string, opts ...store.GetOption) (bool, error) {
+	var gopts = store.DefaultGetOptions()
+	for _, opt := range opts {
+		opt(gopts)
+	}
+
+	if len(gopts.Bucket) == 0 {
+		return false, store.ErrInvalidBucketName
+	}
+
+	_, err := c.cli.HeadObject(&s3.HeadObjectInput{
+		Bucket: aws.String(gopts.Bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		// not found
+		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "NotFound" {
+			return false, nil
+		}
+		// others error
+		return false, err
+	}
+	return true, nil
 }
 
 // Options .

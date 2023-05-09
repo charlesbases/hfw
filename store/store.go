@@ -31,20 +31,32 @@ var (
 )
 
 type Object interface {
+	// Decoding 解码
 	Decoding(pointer interface{}) error
 }
 
 type Objects interface {
+	// Keys key list
 	Keys() []string
+	// List Object list
 	List() []Object
+	// Compress 压缩
 	Compress() error
 }
 
 type Store interface {
+	// Put put Object
 	Put(key string, obj Object, opts ...PutOption) error
+	// Get get Object
 	Get(key string, opts ...GetOption) (Object, error)
+	// Del delete Object
 	Del(key string, opts ...DelOption) error
+	// List get Objects with key
 	List(key string, opts ...ListOption) (Objects, error)
+	// Presign 请求路径
+	Presign(key string, opts ...PresignOption) (string, error)
+	// IsExist key is exist
+	IsExist(key string, opts ...GetOption) (bool, error)
 
 	Options() *Options
 	Name() string
@@ -136,6 +148,13 @@ func DefaultGetOptions() *GetOptions {
 	}
 }
 
+// GetContext .
+func GetContext(ctx context.Context) GetOption {
+	return func(o *GetOptions) {
+		o.Context = ctx
+	}
+}
+
 // GetBucket .
 func GetBucket(bucket string) GetOption {
 	return func(o *GetOptions) {
@@ -147,6 +166,49 @@ func GetBucket(bucket string) GetOption {
 func GetVersionID(ver string) GetOption {
 	return func(o *GetOptions) {
 		o.VersionID = ver
+	}
+}
+
+// DelOptions .
+type DelOptions struct {
+	// Context .
+	Context context.Context
+	// Bucket bucket
+	Bucket string
+	// VersionID version id
+	VersionID string
+	// Recursive 递归删除目录下所有子文件夹
+	Recursive bool
+}
+
+type DelOption func(o *DelOptions)
+
+// DefaultDelOptions .
+func DefaultDelOptions() *DelOptions {
+	return &DelOptions{
+		Context:   defaultContext,
+		Recursive: false,
+	}
+}
+
+// DelBucket .
+func DelBucket(bucket string) DelOption {
+	return func(o *DelOptions) {
+		o.Bucket = bucket
+	}
+}
+
+// DelVersionID .
+func DelVersionID(ver string) DelOption {
+	return func(o *DelOptions) {
+		o.VersionID = ver
+	}
+}
+
+// DelRecursive .
+func DelRecursive() DelOption {
+	return func(o *DelOptions) {
+		o.Recursive = true
 	}
 }
 
@@ -168,8 +230,9 @@ type ListOption func(o *ListOptions)
 // DefaultListOptions .
 func DefaultListOptions() *ListOptions {
 	return &ListOptions{
-		Context: defaultContext,
-		Limit:   defaultLimit,
+		Recursive: false,
+		Context:   defaultContext,
+		Limit:     defaultLimit,
 	}
 }
 
@@ -193,44 +256,51 @@ func ListRecursive() ListOption {
 	}
 }
 
-// DelOptions .
-type DelOptions struct {
+// PresignOptions .
+type PresignOptions struct {
 	// Context .
 	Context context.Context
 	// Bucket bucket
 	Bucket string
-	// VersionID version id
+	// VersionID data version
 	VersionID string
-	// Prefix 根据前缀删除
-	Prefix bool
+	// Expires expires time
+	Expires time.Duration
 }
 
-type DelOption func(o *DelOptions)
+type PresignOption func(o *PresignOptions)
 
-// DefaultDelOptions .
-func DefaultDelOptions() *DelOptions {
-	return &DelOptions{
+// DefaultPresignOptions .
+func DefaultPresignOptions() *PresignOptions {
+	return &PresignOptions{
 		Context: defaultContext,
 	}
 }
 
-// DelBucket .
-func DelBucket(bucket string) DelOption {
-	return func(o *DelOptions) {
+// PresignContext .
+func PresignContext(ctx context.Context) PresignOption {
+	return func(o *PresignOptions) {
+		o.Context = ctx
+	}
+}
+
+// PresignBucket .
+func PresignBucket(bucket string) PresignOption {
+	return func(o *PresignOptions) {
 		o.Bucket = bucket
 	}
 }
 
-// DelVersionID .
-func DelVersionID(ver string) DelOption {
-	return func(o *DelOptions) {
+// PresignVersionID .
+func PresignVersionID(ver string) PresignOption {
+	return func(o *PresignOptions) {
 		o.VersionID = ver
 	}
 }
 
-// DelPrefix .
-func DelPrefix() DelOption {
-	return func(o *DelOptions) {
-		o.Prefix = true
+// PresignExpires .
+func PresignExpires(d time.Duration) PresignOption {
+	return func(o *PresignOptions) {
+		o.Expires = d
 	}
 }
