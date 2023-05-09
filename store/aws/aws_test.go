@@ -16,6 +16,17 @@ var (
 	secretKey = "9eb1e112d8a144a8ab125020cf6e7403"
 )
 
+func Test(t *testing.T) {
+	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
+
+	start := time.Now()
+	total := 1 << 12
+	for i := 0; i < total; i++ {
+		cli.Put(fmt.Sprintf("testdata/data/%d", i), Number(i), store.PutBucket("mxdata"))
+	}
+	logger.Debug(time.Since(start))
+}
+
 func TestAWS(t *testing.T) {
 	NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
 }
@@ -140,7 +151,6 @@ func TestDel(t *testing.T) {
 	if err := cli.Del("testdata/data/", store.DelBucket("mxdata"), store.DelRecursive()); err != nil {
 		logger.Fatal(err)
 	}
-
 	time.Sleep(time.Hour)
 }
 

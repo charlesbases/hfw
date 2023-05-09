@@ -220,14 +220,16 @@ type objects struct {
 	size int64
 	opts *store.ListOptions
 
-	list func(func(objectKey string) error) error
+	list func(func(objs []*s3.Object) error) error
 }
 
 // Keys .
 func (o *objects) Keys() []string {
 	var keys = make([]string, 0, o.size)
-	o.list(func(objectKey string) error {
-		keys = append(keys, objectKey)
+	o.list(func(objs []*s3.Object) error {
+		for _, obj := range objs {
+			keys = append(keys, aws.StringValue(obj.Key))
+		}
 		return nil
 	})
 	return keys
@@ -235,21 +237,23 @@ func (o *objects) Keys() []string {
 
 // List .
 func (o *objects) List() []store.Object {
-	var objs = make([]store.Object, 0, o.size)
-	o.list(func(objectKey string) error {
-		output, err := o.c.cli.GetObject(&s3.GetObjectInput{
-			Bucket: aws.String(o.opts.Bucket),
-			Key:    aws.String(objectKey),
-		})
-		if err != nil {
-			logger.Errorf("[%s] list.object(%s.%s) failed. %v", o.c.Name(), o.opts.Bucket, objectKey, err)
-			return err
-		}
+	var objects = make([]store.Object, 0, o.size)
+	o.list(func(objs []*s3.Object) error {
+		for _, obj := range objs {
+			output, err := o.c.cli.GetObject(&s3.GetObjectInput{
+				Bucket: aws.String(o.opts.Bucket),
+				Key:    obj.Key,
+			})
+			if err != nil {
+				logger.Errorf("[%s] list.object(%s.%s) failed. %v", o.c.Name(), o.opts.Bucket, aws.StringValue(obj.Key), err)
+				return err
+			}
 
-		objs = append(objs, readCloser(output.Body, *output.ContentLength, WithContentType(content.String(*output.ContentType)), WithDeferFunc(func() { output.Body.Close() })))
+			objects = append(objects, readCloser(output.Body, *output.ContentLength, WithContentType(content.String(*output.ContentType)), WithDeferFunc(func() { output.Body.Close() })))
+		}
 		return nil
 	})
-	return objs
+	return objects
 }
 
 // Compress .

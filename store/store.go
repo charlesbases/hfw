@@ -178,6 +178,7 @@ type DelOptions struct {
 	// VersionID version id
 	VersionID string
 	// Recursive 递归删除目录下所有子文件夹
+	// 当递归删除文件夹下所有文件时，为提升效率，使用异步操作
 	Recursive bool
 }
 

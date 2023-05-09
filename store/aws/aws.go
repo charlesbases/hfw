@@ -155,21 +155,35 @@ func (c *client) Del(key string, opts ...store.DelOption) error {
 			return err
 		}
 	} else {
-		objs, err := c.List(key, store.ListBucket(dopts.Bucket), store.ListRecursive(), store.ListLimit(-1))
+		output, err := c.List(key, store.ListBucket(dopts.Bucket), store.ListLimit(-1), store.ListRecursive())
 		if err != nil {
 			logger.Errorf("[%s] del(%s.%s) failed. %v", c.Name(), dopts.Bucket, key, err)
 			return err
 		}
 		go func() {
-			for _, obj := range objs.Keys() {
-				_, err := c.cli.DeleteObject(&s3.DeleteObjectInput{
-					Bucket: aws.String(dopts.Bucket),
-					Key:    aws.String(obj),
-				})
-				if err != nil {
-					logger.Errorf("[%s] del(%s.%s) failed. %v", c.Name(), dopts.Bucket, obj, err)
-				}
-			}
+			var objects = output.(*objects)
+
+			// 并发数
+			var ch = make(chan struct{}, 4)
+
+			objects.list(func(objs []*s3.Object) error {
+				go func() {
+					ch <- struct{}{}
+
+					for _, obj := range objs {
+						_, err := objects.c.cli.DeleteObject(&s3.DeleteObjectInput{
+							Bucket: aws.String(objects.opts.Bucket),
+							Key:    obj.Key,
+						})
+						if err != nil {
+							logger.Errorf("[%s] del(%s.%s) failed. %v", c.Name(), objects.opts.Bucket, aws.StringValue(obj.Key), err)
+						}
+					}
+
+					<-ch
+				}()
+				return nil
+			})
 		}()
 	}
 
@@ -206,7 +220,7 @@ func (c *client) List(key string, opts ...store.ListOption) (store.Objects, erro
 		c:    c,
 		size: limit,
 		opts: lopts,
-		list: func(fn func(string) error) error {
+		list: func(fn func(objs []*s3.Object) error) error {
 			input := &s3.ListObjectsInput{
 				Bucket:  aws.String(lopts.Bucket),
 				Prefix:  aws.String(key),
@@ -222,10 +236,8 @@ func (c *client) List(key string, opts ...store.ListOption) (store.Objects, erro
 					return err
 				}
 
-				for _, object := range output.Contents {
-					if err := fn(aws.StringValue(object.Key)); err != nil {
-						return err
-					}
+				if err := fn(output.Contents); err != nil {
+					return err
 				}
 
 				switch {
