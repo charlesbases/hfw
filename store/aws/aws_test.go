@@ -173,7 +173,7 @@ func TestList(t *testing.T) {
 func TestIsExist(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
 
-	isExist, err := cli.IsExist("testdata", store.GetBucket("mxdata"))
+	isExist, err := cli.IsExist("testdata/", store.GetBucket("mxdata"))
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -183,5 +183,9 @@ func TestIsExist(t *testing.T) {
 func TestPresign(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
 
-	cli.Presign("testdata/data/message", store.PresignBucket("mxdata"))
+	url, err := cli.Presign("testdata/data/message", store.PresignBucket("mxdata"))
+	if err != nil {
+		logger.Fatal(err)
+	}
+	logger.Debug(url)
 }

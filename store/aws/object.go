@@ -73,7 +73,7 @@ func (o *object) Decoding(pointer interface{}) error {
 				return nil
 			}
 		}
-		return store.ErrInvalidObjectDecodingIncorrect
+		return store.ErrObjectDecodingIncorrect
 	case *[]byte:
 		*(pointer.(*[]byte)) = buff.Bytes()
 	case *string:

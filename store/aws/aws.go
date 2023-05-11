@@ -2,10 +2,8 @@ package aws
 
 import (
 	"crypto/tls"
-	"errors"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -16,10 +14,6 @@ import (
 	"github.com/charlesbases/hfw/store"
 	"github.com/charlesbases/logger"
 )
-
-const name = "aws-s3"
-
-var errListLimitInvalid = errors.New("the minimum value of limit is '-1'")
 
 // client .
 type client struct {
@@ -70,7 +64,7 @@ func (c *client) Put(key string, obj store.Object, opts ...store.PutOption) erro
 	}
 
 	if len(popts.Bucket) == 0 {
-		return store.ErrInvalidBucketName
+		return store.ErrBucketName
 	}
 
 	logger.Debugf("[%s] put(%s.%s)", c.Name(), popts.Bucket, key)
@@ -101,7 +95,7 @@ func (c *client) Put(key string, obj store.Object, opts ...store.PutOption) erro
 
 		return nil
 	} else {
-		return store.ErrInvalidObjectTyoe
+		return store.ErrObjectTyoe
 	}
 }
 
@@ -113,7 +107,7 @@ func (c *client) Get(key string, opts ...store.GetOption) (store.Object, error) 
 	}
 
 	if len(gopts.Bucket) == 0 {
-		return nil, store.ErrInvalidBucketName
+		return nil, store.ErrBucketName
 	}
 
 	logger.Debugf("[%s] get(%s.%s)", c.Name(), gopts.Bucket, key)
@@ -138,7 +132,7 @@ func (c *client) Del(key string, opts ...store.DelOption) error {
 	}
 
 	if len(dopts.Bucket) == 0 {
-		return store.ErrInvalidBucketName
+		return store.ErrBucketName
 	}
 
 	logger.Debugf("[%s] del(%s.%s)", c.Name(), dopts.Bucket, key)
@@ -164,7 +158,7 @@ func (c *client) Del(key string, opts ...store.DelOption) error {
 			var objects = output.(*objects)
 
 			// 并发数
-			var ch = make(chan struct{}, 4)
+			var ch = make(chan struct{}, 8)
 
 			objects.list(func(objs []*s3.Object) error {
 				go func() {
@@ -197,7 +191,7 @@ func (c *client) List(key string, opts ...store.ListOption) (store.Objects, erro
 		opt(lopts)
 	}
 	if len(lopts.Bucket) == 0 {
-		return nil, store.ErrInvalidBucketName
+		return nil, store.ErrBucketName
 	}
 
 	if !strings.HasSuffix(key, "/") {
@@ -205,7 +199,7 @@ func (c *client) List(key string, opts ...store.ListOption) (store.Objects, erro
 	}
 
 	if lopts.Limit < -1 {
-		return nil, errListLimitInvalid
+		return nil, store.ErrListLimit
 	}
 
 	logger.Debugf("[%s] list(%s.%s)", c.Name(), lopts.Bucket, key)
@@ -278,14 +272,14 @@ func (c *client) Presign(key string, opts ...store.PresignOption) (string, error
 	}
 
 	if len(popts.Bucket) == 0 {
-		return "", store.ErrInvalidBucketName
+		return "", store.ErrBucketName
 	}
 
 	request, _ := c.cli.GetObjectRequest(&s3.GetObjectInput{
 		Bucket: aws.String(popts.Bucket),
 		Key:    aws.String(key),
 	})
-	return request.Presign(time.Hour * 24)
+	return request.Presign(popts.Expires)
 }
 
 // IsExist .
@@ -296,7 +290,7 @@ func (c *client) IsExist(key string, opts ...store.GetOption) (bool, error) {
 	}
 
 	if len(gopts.Bucket) == 0 {
-		return false, store.ErrInvalidBucketName
+		return false, store.ErrBucketName
 	}
 
 	_, err := c.cli.HeadObject(&s3.HeadObjectInput{

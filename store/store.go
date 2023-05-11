@@ -9,8 +9,10 @@ import (
 const (
 	// defaultRegion self-built
 	defaultRegion = "self-built"
-	// defaultLimit default limit
-	defaultLimit = 1 << 10
+	// defaultListLimit default limit
+	defaultListLimit = 1 << 10
+	// defaultPresignExpire default
+	defaultPresignExpire = time.Hour * 24
 )
 
 var (
@@ -21,13 +23,15 @@ var (
 )
 
 var (
-	// ErrInvalidBucketName invalid bucket name
-	ErrInvalidBucketName = errors.New("invalid bucket name.")
+	// ErrBucketName bucket cannot be empty
+	ErrBucketName = errors.New("bucket cannot be empty.")
 
-	// ErrInvalidObjectTyoe invalid object type
-	ErrInvalidObjectTyoe = errors.New("invalid object type.")
-	// ErrInvalidObjectDecodingIncorrect incorrect object type
-	ErrInvalidObjectDecodingIncorrect = errors.New("object decoding failed. incorrect object type.")
+	// ErrObjectTyoe unknown object type
+	ErrObjectTyoe = errors.New("unknown object type.")
+	// ErrObjectDecodingIncorrect incorrect object type
+	ErrObjectDecodingIncorrect = errors.New("object decoding failed. incorrect object type.")
+	// ErrListLimit .
+	ErrListLimit = errors.New("the minimum value of limit is '-1'")
 )
 
 type Object interface {
@@ -233,7 +237,7 @@ func DefaultListOptions() *ListOptions {
 	return &ListOptions{
 		Recursive: false,
 		Context:   defaultContext,
-		Limit:     defaultLimit,
+		Limit:     defaultListLimit,
 	}
 }
 
@@ -265,7 +269,7 @@ type PresignOptions struct {
 	Bucket string
 	// VersionID data version
 	VersionID string
-	// Expires expires time
+	// Expires expires time (s)
 	Expires time.Duration
 }
 
@@ -275,6 +279,7 @@ type PresignOption func(o *PresignOptions)
 func DefaultPresignOptions() *PresignOptions {
 	return &PresignOptions{
 		Context: defaultContext,
+		Expires: defaultPresignExpire,
 	}
 }
 
@@ -300,8 +305,8 @@ func PresignVersionID(ver string) PresignOption {
 }
 
 // PresignExpires .
-func PresignExpires(d time.Duration) PresignOption {
+func PresignExpires(seconds int64) PresignOption {
 	return func(o *PresignOptions) {
-		o.Expires = d
+		o.Expires = time.Second * time.Duration(seconds)
 	}
 }
