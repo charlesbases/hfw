@@ -137,8 +137,8 @@ func (c *client) Del(key string, opts ...store.DelOption) error {
 
 	logger.Debugf("[%s] del(%s.%s)", c.Name(), dopts.Bucket, key)
 
-	// 只删除指定 key
-	if !dopts.Recursive {
+	// 只删除指定 key (若为文件夹则不删除)
+	if dopts.DisableRecursive {
 		_, err := c.cli.DeleteObject(&s3.DeleteObjectInput{
 			Bucket:    aws.String(dopts.Bucket),
 			Key:       aws.String(key),
@@ -149,7 +149,7 @@ func (c *client) Del(key string, opts ...store.DelOption) error {
 			return err
 		}
 	} else {
-		output, err := c.List(key, store.ListBucket(dopts.Bucket), store.ListLimit(-1), store.ListRecursive())
+		output, err := c.List(key, store.ListBucket(dopts.Bucket), store.ListLimit(-1))
 		if err != nil {
 			logger.Errorf("[%s] del(%s.%s) failed. %v", c.Name(), dopts.Bucket, key, err)
 			return err
@@ -164,15 +164,20 @@ func (c *client) Del(key string, opts ...store.DelOption) error {
 				go func() {
 					ch <- struct{}{}
 
+					var items = make([]*s3.ObjectIdentifier, 0, len(objs))
 					for _, obj := range objs {
-						_, err := objects.c.cli.DeleteObject(&s3.DeleteObjectInput{
-							Bucket: aws.String(objects.opts.Bucket),
-							Key:    obj.Key,
+						items = append(items, &s3.ObjectIdentifier{
+							Key: obj.Key,
 						})
-						if err != nil {
-							logger.Errorf("[%s] del(%s.%s) failed. %v", c.Name(), objects.opts.Bucket, aws.StringValue(obj.Key), err)
-						}
 					}
+
+					objects.c.cli.DeleteObjects(&s3.DeleteObjectsInput{
+						Bucket: aws.String(objects.opts.Bucket),
+						Delete: &s3.Delete{
+							Objects: items,
+							Quiet:   aws.Bool(true),
+						},
+					})
 
 					<-ch
 				}()
@@ -205,7 +210,7 @@ func (c *client) List(key string, opts ...store.ListOption) (store.Objects, erro
 	logger.Debugf("[%s] list(%s.%s)", c.Name(), lopts.Bucket, key)
 
 	// aws-s3 default limit
-	var limit int64 = 1 << 10
+	var limit int64 = 1000
 	if lopts.Limit > -1 && lopts.Limit < limit {
 		limit = lopts.Limit
 	}
@@ -214,52 +219,40 @@ func (c *client) List(key string, opts ...store.ListOption) (store.Objects, erro
 		c:    c,
 		size: limit,
 		opts: lopts,
-		list: func(fn func(objs []*s3.Object) error) error {
-			input := &s3.ListObjectsInput{
+		list: func(fn func(objs []*s3.Object) error) (err error) {
+			input := &s3.ListObjectsV2Input{
 				Bucket:  aws.String(lopts.Bucket),
 				Prefix:  aws.String(key),
 				MaxKeys: aws.Int64(limit),
 			}
 
-			var currentSize int64
-
-			for {
-				output, err := c.cli.ListObjects(input)
-				if err != nil {
-					logger.Errorf("[%s] list(%s.%s) failed. %v", c.Name(), lopts.Bucket, key, err)
-					return err
-				}
-
-				if err := fn(output.Contents); err != nil {
-					return err
-				}
-
-				switch {
-				// 已查询到足量的数据，退出循环（不管数据是否被截断）。
-				case currentSize == lopts.Limit:
-					break
-				// 未获取到足量的数据，并且数据被截断
-				case aws.BoolValue(output.IsTruncated):
-					input.Marker = output.NextMarker
-
-					// 再次查询时，根据情况判断是否需要改变 MaxKey
-					// 1. lopts.Limit == 1
-					//    查询全部数据，不用改变 MaxKey
-					// 2. (lopts.Limit-objects.size) >= limit
-					//    不用改变 MaxKey
-					// 3. (lopts.Limit-objects.size) < limit
-					//    设置 MaxKey, 以获取需要的数据量
-					if (lopts.Limit > 0) && (lopts.Limit-currentSize) < limit {
-						input.MaxKeys = aws.Int64(lopts.Limit - currentSize)
-					}
-					continue
-				}
-
-				// 未获取到足量数据，但已获取相关 key 的全部数据，退出循环
-				break
+			if lopts.DisableRecursive {
+				input.Delimiter = aws.String("/")
 			}
 
-			return nil
+			var currentSize int64
+
+			c.cli.ListObjectsV2Pages(input,
+				func(output *s3.ListObjectsV2Output, lasted bool) bool {
+					currentSize += int64(len(output.Contents))
+
+					// do something
+					if err = fn(output.Contents); err != nil {
+						return false
+					}
+
+					// continue?
+					switch {
+					case lasted:
+						return false
+					default:
+						if (lopts.Limit > 0) && (lopts.Limit-currentSize) < limit {
+							input.MaxKeys = aws.Int64(lopts.Limit - currentSize)
+						}
+						return currentSize != lopts.Limit
+					}
+				})
+			return err
 		},
 	}, nil
 }

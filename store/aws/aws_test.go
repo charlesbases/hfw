@@ -20,7 +20,7 @@ func Test(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
 
 	start := time.Now()
-	total := 1 << 12
+	total := 100000
 	for i := 0; i < total; i++ {
 		cli.Put(fmt.Sprintf("testdata/data/%d", i), Number(i), store.PutBucket("mxdata"))
 	}
@@ -148,7 +148,7 @@ func TestGet(t *testing.T) {
 func TestDel(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
 
-	if err := cli.Del("testdata/data/", store.DelBucket("mxdata"), store.DelRecursive()); err != nil {
+	if err := cli.Del("testdata/data/", store.DelBucket("mxdata")); err != nil {
 		logger.Fatal(err)
 	}
 	time.Sleep(time.Hour)
@@ -157,7 +157,7 @@ func TestDel(t *testing.T) {
 func TestList(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
 
-	objs, err := cli.List("testdata", store.ListBucket("mxdata"), store.ListLimit(-1))
+	objs, err := cli.List("testdata", store.ListBucket("mxdata"), store.ListLimit(1001))
 	if err != nil {
 		logger.Fatal(err)
 	}

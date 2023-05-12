@@ -181,9 +181,8 @@ type DelOptions struct {
 	Bucket string
 	// VersionID version id
 	VersionID string
-	// Recursive 递归删除目录下所有子文件夹
-	// 当递归删除文件夹下所有文件时，为提升效率，使用异步操作
-	Recursive bool
+	// DisableRecursive 不进行递归删除子文件夹，保留子文件夹
+	DisableRecursive bool
 }
 
 type DelOption func(o *DelOptions)
@@ -191,8 +190,7 @@ type DelOption func(o *DelOptions)
 // DefaultDelOptions .
 func DefaultDelOptions() *DelOptions {
 	return &DelOptions{
-		Context:   defaultContext,
-		Recursive: false,
+		Context: defaultContext,
 	}
 }
 
@@ -210,10 +208,10 @@ func DelVersionID(ver string) DelOption {
 	}
 }
 
-// DelRecursive .
-func DelRecursive() DelOption {
+// DelDisableRecursive .
+func DelDisableRecursive() DelOption {
 	return func(o *DelOptions) {
-		o.Recursive = true
+		o.DisableRecursive = true
 	}
 }
 
@@ -226,8 +224,8 @@ type ListOptions struct {
 	// Limit 返回的 key 列表。
 	// 如果这个值为 '-1'，则不做返回 key 的数量限制。但如果实际 key 过多，将极大的影响性能。
 	Limit int64
-	// Recursive 递归列出子文件夹内文件
-	Recursive bool
+	// DisableRecursive 不查询子文件夹
+	DisableRecursive bool
 }
 
 type ListOption func(o *ListOptions)
@@ -235,9 +233,8 @@ type ListOption func(o *ListOptions)
 // DefaultListOptions .
 func DefaultListOptions() *ListOptions {
 	return &ListOptions{
-		Recursive: false,
-		Context:   defaultContext,
-		Limit:     defaultListLimit,
+		Context: defaultContext,
+		Limit:   defaultListLimit,
 	}
 }
 
@@ -254,10 +251,10 @@ func ListLimit(limit int64) ListOption {
 	}
 }
 
-// ListRecursive .
-func ListRecursive() ListOption {
+// ListDisableRecursive .
+func ListDisableRecursive() ListOption {
 	return func(o *ListOptions) {
-		o.Recursive = true
+		o.DisableRecursive = true
 	}
 }
 
