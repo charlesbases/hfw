@@ -3,14 +3,15 @@ package store
 import (
 	"context"
 	"errors"
+	"io"
 	"time"
 )
 
 const (
 	// defaultRegion self-built
 	defaultRegion = "self-built"
-	// defaultListLimit default limit
-	defaultListLimit = 1 << 10
+	// defaultListLimit default limit (show all)
+	defaultListLimit = -1
 	// defaultPresignExpire default
 	defaultPresignExpire = time.Hour * 24
 )
@@ -42,10 +43,8 @@ type Object interface {
 type Objects interface {
 	// Keys key list
 	Keys() []string
-	// List Object list
-	List() []Object
 	// Compress 压缩
-	Compress() error
+	Compress(dst io.Writer) error
 }
 
 type Store interface {

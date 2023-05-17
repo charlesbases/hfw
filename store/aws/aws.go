@@ -17,7 +17,7 @@ import (
 
 // client .
 type client struct {
-	cli *s3.S3
+	s3 *s3.S3
 
 	opts *store.Options
 }
@@ -44,15 +44,15 @@ func NewClient(endpoint string, accessKey string, secretKey string, opts ...stor
 		logger.Fatalf("[%s] connect failed. %v", c.Name(), err)
 	}
 
-	c.cli = s3.New(awsSession)
+	c.s3 = s3.New(awsSession)
 	c.ping()
 	return c
 }
 
 // ping .
 func (c *client) ping() {
-	if _, err := c.cli.ListBuckets(nil); err != nil {
-		logger.Fatalf(`[%s] connect failed. dial "%s" failed.`, c.Name(), *c.cli.Config.Endpoint)
+	if _, err := c.s3.ListBuckets(nil); err != nil {
+		logger.Fatalf(`[%s] connect failed. dial "%s" failed.`, c.Name(), *c.s3.Config.Endpoint)
 	}
 }
 
@@ -82,7 +82,7 @@ func (c *client) Put(key string, obj store.Object, opts ...store.PutOption) erro
 		}
 
 		// put
-		if _, err := c.cli.PutObject(&s3.PutObjectInput{
+		if _, err := c.s3.PutObject(&s3.PutObjectInput{
 			Key:           aws.String(key),
 			Bucket:        aws.String(popts.Bucket),
 			Body:          obj.readSeeker(),
@@ -112,7 +112,7 @@ func (c *client) Get(key string, opts ...store.GetOption) (store.Object, error) 
 
 	logger.Debugf("[%s] get(%s.%s)", c.Name(), gopts.Bucket, key)
 
-	output, err := c.cli.GetObject(&s3.GetObjectInput{
+	output, err := c.s3.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(gopts.Bucket),
 		Key:    aws.String(key),
 	})
@@ -139,7 +139,7 @@ func (c *client) Del(key string, opts ...store.DelOption) error {
 
 	// 只删除指定 key (若为文件夹则不删除)
 	if dopts.DisableRecursive {
-		_, err := c.cli.DeleteObject(&s3.DeleteObjectInput{
+		_, err := c.s3.DeleteObject(&s3.DeleteObjectInput{
 			Bucket:    aws.String(dopts.Bucket),
 			Key:       aws.String(key),
 			VersionId: aws.String(dopts.VersionID),
@@ -161,26 +161,28 @@ func (c *client) Del(key string, opts ...store.DelOption) error {
 			var ch = make(chan struct{}, 8)
 
 			objects.list(func(objs []*s3.Object) error {
-				go func() {
-					ch <- struct{}{}
+				select {
+				case ch <- struct{}{}:
+					go func() {
+						var items = make([]*s3.ObjectIdentifier, 0, len(objs))
+						for _, obj := range objs {
+							items = append(items, &s3.ObjectIdentifier{
+								Key: obj.Key,
+							})
+						}
 
-					var items = make([]*s3.ObjectIdentifier, 0, len(objs))
-					for _, obj := range objs {
-						items = append(items, &s3.ObjectIdentifier{
-							Key: obj.Key,
+						objects.c.s3.DeleteObjects(&s3.DeleteObjectsInput{
+							Bucket: aws.String(objects.opts.Bucket),
+							Delete: &s3.Delete{
+								Objects: items,
+								Quiet:   aws.Bool(true),
+							},
 						})
-					}
 
-					objects.c.cli.DeleteObjects(&s3.DeleteObjectsInput{
-						Bucket: aws.String(objects.opts.Bucket),
-						Delete: &s3.Delete{
-							Objects: items,
-							Quiet:   aws.Bool(true),
-						},
-					})
+						<-ch
+					}()
+				}
 
-					<-ch
-				}()
 				return nil
 			})
 		}()
@@ -210,7 +212,7 @@ func (c *client) List(key string, opts ...store.ListOption) (store.Objects, erro
 	logger.Debugf("[%s] list(%s.%s)", c.Name(), lopts.Bucket, key)
 
 	// aws-s3 default limit
-	var limit int64 = 1000
+	var limit int64 = 4
 	if lopts.Limit > -1 && lopts.Limit < limit {
 		limit = lopts.Limit
 	}
@@ -230,11 +232,11 @@ func (c *client) List(key string, opts ...store.ListOption) (store.Objects, erro
 				input.Delimiter = aws.String("/")
 			}
 
-			var currentSize int64
+			var count int64
 
-			c.cli.ListObjectsV2Pages(input,
+			c.s3.ListObjectsV2Pages(input,
 				func(output *s3.ListObjectsV2Output, lasted bool) bool {
-					currentSize += int64(len(output.Contents))
+					count += int64(len(output.Contents))
 
 					// do something
 					if err = fn(output.Contents); err != nil {
@@ -246,10 +248,10 @@ func (c *client) List(key string, opts ...store.ListOption) (store.Objects, erro
 					case lasted:
 						return false
 					default:
-						if (lopts.Limit > 0) && (lopts.Limit-currentSize) < limit {
-							input.MaxKeys = aws.Int64(lopts.Limit - currentSize)
+						if (lopts.Limit > 0) && (lopts.Limit-count) < limit {
+							input.MaxKeys = aws.Int64(lopts.Limit - count)
 						}
-						return currentSize != lopts.Limit
+						return count != lopts.Limit
 					}
 				})
 			return err
@@ -268,7 +270,7 @@ func (c *client) Presign(key string, opts ...store.PresignOption) (string, error
 		return "", store.ErrBucketName
 	}
 
-	request, _ := c.cli.GetObjectRequest(&s3.GetObjectInput{
+	request, _ := c.s3.GetObjectRequest(&s3.GetObjectInput{
 		Bucket: aws.String(popts.Bucket),
 		Key:    aws.String(key),
 	})
@@ -286,7 +288,7 @@ func (c *client) IsExist(key string, opts ...store.GetOption) (bool, error) {
 		return false, store.ErrBucketName
 	}
 
-	_, err := c.cli.HeadObject(&s3.HeadObjectInput{
+	_, err := c.s3.HeadObject(&s3.HeadObjectInput{
 		Bucket: aws.String(gopts.Bucket),
 		Key:    aws.String(key),
 	})

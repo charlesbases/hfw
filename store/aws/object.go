@@ -1,11 +1,14 @@
 package aws
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -235,28 +238,72 @@ func (o *objects) Keys() []string {
 	return keys
 }
 
-// List .
-func (o *objects) List() []store.Object {
-	var objects = make([]store.Object, 0, o.size)
-	o.list(func(objs []*s3.Object) error {
-		for _, obj := range objs {
-			output, err := o.c.cli.GetObject(&s3.GetObjectInput{
-				Bucket: aws.String(o.opts.Bucket),
-				Key:    obj.Key,
-			})
-			if err != nil {
-				logger.Errorf("[%s] list.object(%s.%s) failed. %v", o.c.Name(), o.opts.Bucket, aws.StringValue(obj.Key), err)
-				return err
-			}
+// Compress .
+func (o *objects) Compress(dst io.Writer) error {
+	// gz
+	gWriter := gzip.NewWriter(dst)
+	defer gWriter.Close()
 
-			objects = append(objects, readCloser(output.Body, *output.ContentLength, WithContentType(content.String(*output.ContentType)), WithDeferFunc(func() { output.Body.Close() })))
+	// tar
+	tWriter := tar.NewWriter(gWriter)
+	defer tWriter.Close()
+
+	// 并发数
+	var ch = make(chan struct{}, 8)
+
+	// 已处理的对象数量
+	var count int64
+
+	// 退出 chan
+	var exit chan struct{}
+
+	// 当前状态
+	var active bool
+
+	return o.list(func(objs []*s3.Object) error {
+		select {
+		case ch <- struct{}{}:
+			go func() {
+				for _, obj := range objs {
+					output, err := o.c.s3.GetObject(&s3.GetObjectInput{
+						Bucket: aws.String(o.opts.Bucket),
+						Key:    obj.Key,
+					})
+					defer output.Body.Close()
+
+					if err != nil {
+						logger.Errorf("[%s] get.object(%s.%s) failed. %v", o.c.Name(), o.opts.Bucket, aws.StringValue(obj.Key), err)
+						if active {
+							active = false
+							close(exit)
+						}
+						return
+					}
+
+					tWriter.WriteHeader(&tar.Header{
+						Name:    filepath.Base(aws.StringValue(obj.Key)),
+						Size:    aws.Int64Value(output.ContentLength),
+						ModTime: aws.TimeValue(output.LastModified),
+					})
+
+					_, err = io.Copy(tWriter, output.Body)
+					if err != nil {
+						logger.Errorf("[%s] copy object(%s.%s) to %T failed. %v", o.c.Name(), o.opts.Bucket, aws.StringValue(obj.Key), dst, err)
+						if active {
+							active = false
+							close(exit)
+						}
+						return
+					}
+
+					count++
+				}
+				<-ch
+			}()
+
+		case <-exit:
+			return nil
 		}
 		return nil
 	})
-	return objects
-}
-
-// Compress .
-func (o *objects) Compress() error {
-	return nil
 }

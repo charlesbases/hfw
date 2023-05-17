@@ -20,7 +20,7 @@ func Test(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
 
 	start := time.Now()
-	total := 100000
+	total := 100
 	for i := 0; i < total; i++ {
 		cli.Put(fmt.Sprintf("testdata/data/%d", i), Number(i), store.PutBucket("mxdata"))
 	}
@@ -165,7 +165,8 @@ func TestList(t *testing.T) {
 		logger.Debug(key)
 	}
 	fmt.Println("++++++++")
-	for _, obj := range objs.List() {
+	list, _ := objs.List()
+	for _, obj := range list {
 		logger.Debug(fmt.Sprintf("%T", obj))
 	}
 }
@@ -188,4 +189,19 @@ func TestPresign(t *testing.T) {
 		logger.Fatal(err)
 	}
 	logger.Debug(url)
+}
+
+func TestListCompress(t *testing.T) {
+	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
+
+	objs, err := cli.List("testdata", store.ListBucket("mxdata"))
+	if err != nil {
+		logger.Fatal(err)
+	}
+
+	f, _ := os.OpenFile("testdata.tar.gz", os.O_CREATE|os.O_RDWR, 0755)
+	defer f.Close()
+	if err := objs.Compress(f); err != nil {
+		logger.Fatal()
+	}
 }
