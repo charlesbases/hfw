@@ -232,6 +232,7 @@ func (c *client) List(key string, opts ...store.ListOption) (store.Objects, erro
 				input.Delimiter = aws.String("/")
 			}
 
+			// 已查询数据量
 			var count int64
 
 			c.s3.ListObjectsV2Pages(input,

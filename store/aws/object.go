@@ -1,19 +1,20 @@
 package aws
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/charlesbases/hfw/content"
+	"github.com/charlesbases/hfw/download"
+	"github.com/charlesbases/hfw/download/archiver"
 	"github.com/charlesbases/hfw/store"
 	"github.com/charlesbases/logger"
 	"github.com/golang/protobuf/proto"
@@ -238,32 +239,45 @@ func (o *objects) Keys() []string {
 	return keys
 }
 
+// recorder .
+type recorder struct {
+	// conct 协程数
+	conct chan struct{}
+	// close 退出状态
+	close chan struct{}
+
+	once   sync.Once
+	writer download.Writer
+}
+
+// closing .
+func (r *recorder) closing() {
+	r.once.Do(func() {
+		close(r.close)
+	})
+}
+
 // Compress .
 func (o *objects) Compress(dst io.Writer) error {
-	// gz
-	gWriter := gzip.NewWriter(dst)
-	defer gWriter.Close()
+	// 记录器
+	r := &recorder{
+		conct:  make(chan struct{}, 8),
+		close:  make(chan struct{}),
+		writer: archiver.New(dst),
+	}
+	defer r.writer.Close()
 
-	// tar
-	tWriter := tar.NewWriter(gWriter)
-	defer tWriter.Close()
+	var swg = sync.WaitGroup{}
 
-	// 并发数
-	var ch = make(chan struct{}, 8)
+	// do something
+	o.list(func(objs []*s3.Object) error {
+		swg.Add(1)
 
-	// 已处理的对象数量
-	var count int64
-
-	// 退出 chan
-	var exit chan struct{}
-
-	// 当前状态
-	var active bool
-
-	return o.list(func(objs []*s3.Object) error {
 		select {
-		case ch <- struct{}{}:
+		case r.conct <- struct{}{}:
 			go func() {
+				defer swg.Done()
+
 				for _, obj := range objs {
 					output, err := o.c.s3.GetObject(&s3.GetObjectInput{
 						Bucket: aws.String(o.opts.Bucket),
@@ -272,38 +286,31 @@ func (o *objects) Compress(dst io.Writer) error {
 					defer output.Body.Close()
 
 					if err != nil {
-						logger.Errorf("[%s] get.object(%s.%s) failed. %v", o.c.Name(), o.opts.Bucket, aws.StringValue(obj.Key), err)
-						if active {
-							active = false
-							close(exit)
-						}
+						r.closing()
+						logger.Errorf(`[%s] compress failed. "%s.%s" %v`, o.c.Name(), o.opts.Bucket, aws.StringValue(obj.Key), err)
 						return
 					}
 
-					tWriter.WriteHeader(&tar.Header{
-						Name:    filepath.Base(aws.StringValue(obj.Key)),
-						Size:    aws.Int64Value(output.ContentLength),
-						ModTime: aws.TimeValue(output.LastModified),
-					})
-
-					_, err = io.Copy(tWriter, output.Body)
-					if err != nil {
-						logger.Errorf("[%s] copy object(%s.%s) to %T failed. %v", o.c.Name(), o.opts.Bucket, aws.StringValue(obj.Key), dst, err)
-						if active {
-							active = false
-							close(exit)
-						}
+					if err := r.writer.Write(&download.Header{
+						Name:   filepath.Base(aws.StringValue(obj.Key)),
+						Size:   aws.Int64Value(output.ContentLength),
+						Modify: aws.TimeValue(output.LastModified),
+						Reader: output.Body,
+					}); err != nil {
+						r.closing()
+						logger.Errorf(`[%s] compress failed. "%s.%s" %v`, o.c.Name(), o.opts.Bucket, aws.StringValue(obj.Key), err)
 						return
 					}
-
-					count++
 				}
-				<-ch
+				<-r.conct
 			}()
-
-		case <-exit:
+		case <-r.close:
+			swg.Done()
 			return nil
 		}
 		return nil
 	})
+
+	swg.Wait()
+	return nil
 }

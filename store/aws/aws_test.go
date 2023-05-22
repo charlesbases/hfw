@@ -27,6 +27,35 @@ func Test(t *testing.T) {
 	logger.Debug(time.Since(start))
 }
 
+func TestRecorder(t *testing.T) {
+	for {
+		r := &recorder{conct: make(chan struct{}, 8), close: make(chan struct{})}
+
+		go func() {
+			fmt.Println("1")
+			r.closing()
+		}()
+		go func() {
+			fmt.Println("2")
+			r.closing()
+		}()
+		go func() {
+			fmt.Println("3")
+			r.closing()
+		}()
+		go func() {
+			fmt.Println("4")
+			r.closing()
+		}()
+		go func() {
+			fmt.Println("5")
+			r.closing()
+		}()
+
+		<-r.close
+	}
+}
+
 func TestAWS(t *testing.T) {
 	NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
 }
@@ -165,10 +194,6 @@ func TestList(t *testing.T) {
 		logger.Debug(key)
 	}
 	fmt.Println("++++++++")
-	list, _ := objs.List()
-	for _, obj := range list {
-		logger.Debug(fmt.Sprintf("%T", obj))
-	}
 }
 
 func TestIsExist(t *testing.T) {
