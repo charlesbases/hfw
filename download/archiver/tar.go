@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"io"
+	"os"
 	"sync"
 
 	"github.com/charlesbases/hfw/download"
@@ -30,9 +31,14 @@ func (tx *tx) Write(h *download.Header) error {
 	tx.mx.Lock()
 	defer tx.mx.Unlock()
 
+	if h.Mode == 0 {
+		h.Mode = os.O_RDWR
+	}
+
 	if err := tx.wr.WriteHeader(&tar.Header{
 		Name:    h.Name,
 		Size:    h.Size,
+		Mode:    int64(h.Mode),
 		ModTime: h.Modify,
 	}); err != nil {
 		return err

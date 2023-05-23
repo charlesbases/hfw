@@ -14,6 +14,7 @@ type Writer interface {
 type Header struct {
 	Name   string
 	Size   int64
+	Mode   int
 	Reader io.Reader
 	Modify time.Time
 }

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"time"
+
+	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 const (
@@ -45,6 +47,8 @@ type Objects interface {
 	Keys() []string
 	// Compress 压缩
 	Compress(dst io.Writer) error
+	// CustomFunc 自定义处理函数
+	CustomFunc(fn func(objs []*s3.Object) error) error
 }
 
 type Store interface {
@@ -223,8 +227,10 @@ type ListOptions struct {
 	// Limit 返回的 key 列表。
 	// 如果这个值为 '-1'，则不做返回 key 的数量限制。但如果实际 key 过多，将极大的影响性能。
 	Limit int64
-	// DisableRecursive 不查询子文件夹
-	DisableRecursive bool
+	// Recursive 递归轮询子文件夹
+	Recursive bool
+	// ShowDir 显示文件夹（文件夹单独作为一个 Object）
+	ShowDir bool
 }
 
 type ListOption func(o *ListOptions)
@@ -232,8 +238,10 @@ type ListOption func(o *ListOptions)
 // DefaultListOptions .
 func DefaultListOptions() *ListOptions {
 	return &ListOptions{
-		Context: defaultContext,
-		Limit:   defaultListLimit,
+		Context:   defaultContext,
+		Limit:     defaultListLimit,
+		ShowDir:   false,
+		Recursive: true,
 	}
 }
 
@@ -250,10 +258,17 @@ func ListLimit(limit int64) ListOption {
 	}
 }
 
+// ListShowDir .
+func ListShowDir() ListOption {
+	return func(o *ListOptions) {
+		o.ShowDir = true
+	}
+}
+
 // ListDisableRecursive .
 func ListDisableRecursive() ListOption {
 	return func(o *ListOptions) {
-		o.DisableRecursive = true
+		o.Recursive = false
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -221,16 +220,17 @@ func MarshalProto(v proto.Message) store.Object {
 // objects .
 type objects struct {
 	c    *client
+	key  string
 	size int64
 	opts *store.ListOptions
 
-	list func(func(objs []*s3.Object) error) error
+	handler func(func(objs []*s3.Object) error) error
 }
 
 // Keys .
 func (o *objects) Keys() []string {
 	var keys = make([]string, 0, o.size)
-	o.list(func(objs []*s3.Object) error {
+	o.handler(func(objs []*s3.Object) error {
 		for _, obj := range objs {
 			keys = append(keys, aws.StringValue(obj.Key))
 		}
@@ -270,7 +270,7 @@ func (o *objects) Compress(dst io.Writer) error {
 	var swg = sync.WaitGroup{}
 
 	// do something
-	o.list(func(objs []*s3.Object) error {
+	o.handler(func(objs []*s3.Object) error {
 		swg.Add(1)
 
 		select {
@@ -292,7 +292,7 @@ func (o *objects) Compress(dst io.Writer) error {
 					}
 
 					if err := r.writer.Write(&download.Header{
-						Name:   filepath.Base(aws.StringValue(obj.Key)),
+						Name:   strings.Replace(aws.StringValue(obj.Key), o.key, ".", 1),
 						Size:   aws.Int64Value(output.ContentLength),
 						Modify: aws.TimeValue(output.LastModified),
 						Reader: output.Body,
@@ -313,4 +313,9 @@ func (o *objects) Compress(dst io.Writer) error {
 
 	swg.Wait()
 	return nil
+}
+
+// CustomFunc .
+func (o *objects) CustomFunc(fn func(objs []*s3.Object) error) error {
+	return o.handler(fn)
 }

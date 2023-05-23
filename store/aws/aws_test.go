@@ -186,7 +186,7 @@ func TestDel(t *testing.T) {
 func TestList(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
 
-	objs, err := cli.List("testdata", store.ListBucket("mxdata"), store.ListLimit(1001))
+	objs, err := cli.List("testdata/auth", store.ListBucket("mxdata"))
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestPresign(t *testing.T) {
 func TestListCompress(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, store.Timeout(3))
 
-	objs, err := cli.List("testdata", store.ListBucket("mxdata"))
+	objs, err := cli.List("testdata/auth", store.ListBucket("mxdata"))
 	if err != nil {
 		logger.Fatal(err)
 	}

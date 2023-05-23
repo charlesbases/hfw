@@ -160,7 +160,7 @@ func (c *client) Del(key string, opts ...store.DelOption) error {
 			// 并发数
 			var ch = make(chan struct{}, 8)
 
-			objects.list(func(objs []*s3.Object) error {
+			objects.handler(func(objs []*s3.Object) error {
 				select {
 				case ch <- struct{}{}:
 					go func() {
@@ -212,23 +212,25 @@ func (c *client) List(key string, opts ...store.ListOption) (store.Objects, erro
 	logger.Debugf("[%s] list(%s.%s)", c.Name(), lopts.Bucket, key)
 
 	// aws-s3 default limit
-	var limit int64 = 4
+	var limit int64 = 1000
 	if lopts.Limit > -1 && lopts.Limit < limit {
 		limit = lopts.Limit
 	}
 
 	return &objects{
 		c:    c,
+		key:  strings.TrimSuffix(key, "/"),
 		size: limit,
 		opts: lopts,
-		list: func(fn func(objs []*s3.Object) error) (err error) {
+		handler: func(fn func(objs []*s3.Object) error) (err error) {
 			input := &s3.ListObjectsV2Input{
 				Bucket:  aws.String(lopts.Bucket),
 				Prefix:  aws.String(key),
 				MaxKeys: aws.Int64(limit),
 			}
 
-			if lopts.DisableRecursive {
+			// 不查询子文件夹
+			if !lopts.Recursive {
 				input.Delimiter = aws.String("/")
 			}
 
@@ -237,10 +239,22 @@ func (c *client) List(key string, opts ...store.ListOption) (store.Objects, erro
 
 			c.s3.ListObjectsV2Pages(input,
 				func(output *s3.ListObjectsV2Output, lasted bool) bool {
-					count += int64(len(output.Contents))
+					contents := make([]*s3.Object, 0, len(output.Contents))
+					// 是否显示以 '/'
+					if lopts.ShowDir {
+						contents = output.Contents
+					} else {
+						for _, obj := range output.Contents {
+							if !strings.HasSuffix(aws.StringValue(obj.Key), "/") {
+								contents = append(contents, obj)
+							}
+						}
+					}
+
+					count += int64(len(contents))
 
 					// do something
-					if err = fn(output.Contents); err != nil {
+					if err = fn(contents); err != nil {
 						return false
 					}
 
