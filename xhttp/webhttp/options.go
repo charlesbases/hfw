@@ -123,28 +123,29 @@ func (opts *options) do(req *http.Request) (*data, error) {
 		return nil, err
 	}
 
-	switch rsp.StatusCode {
-	case 200:
-		defer rsp.Body.Close()
+	// rsp.Body
+	body, err := ioutil.ReadAll(rsp.Body)
+	rsp.Body.Close()
+	if err != nil {
+		logger.Errorf("%s | %s | ioutil.ReadAll() error: %v", req.Method, req.URL, err)
+		return nil, err
+	}
 
-		if body, err := ioutil.ReadAll(rsp.Body); err != nil {
-			logger.Errorf("%s | %s | ioutil.ReadAll() error: %v", req.Method, req.URL, err)
+	switch rsp.StatusCode {
+	case http.StatusOK:
+		var response = new(Response)
+		if err := opts.marshaler.Unmarshal(body, response); err != nil {
+			logger.Errorf("%s | %s | %d | %s.Unmarshal() error: %v", req.Method, req.URL, http.StatusOK, opts.marshaler.Type(), err)
 			return nil, err
-		} else {
-			var response = new(Response)
-			if err := opts.marshaler.Unmarshal(body, response); err != nil {
-				logger.Errorf("%s | %s | %s.Unmarshal() error: %v", req.Method, req.URL, opts.marshaler.Type(), err)
-				return nil, err
-			}
-			// rsponse message
-			if response.Code != webcode.StatusOK.Int32() {
-				logger.Errorf(`%s | %s | {"code": %d, "message": "%s"}`, req.Method, req.URL, response.Code, response.Message)
-				return nil, webcode.InternalErr
-			}
-			return &data{opts: opts, data: response.Data}, nil
 		}
+		// rsponse message
+		if response.Code != webcode.StatusOK.Int32() {
+			logger.Errorf(`%s | %s | %d | {"code": %d, "message": "%s"}`, req.Method, req.URL, http.StatusOK, response.Code, response.Message)
+			return nil, webcode.InternalErr
+		}
+		return &data{opts: opts, data: response.Data}, nil
 	default:
-		logger.Errorf("%s | %s | failed: %s", req.Method, req.URL, rsp.Status)
+		logger.Errorf("%s | %s | %d | %s", req.Method, req.URL, rsp.StatusCode, string(body))
 		return nil, webcode.InternalErr
 	}
 }
