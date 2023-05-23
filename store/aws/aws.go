@@ -239,22 +239,10 @@ func (c *client) List(key string, opts ...store.ListOption) (store.Objects, erro
 
 			c.s3.ListObjectsV2Pages(input,
 				func(output *s3.ListObjectsV2Output, lasted bool) bool {
-					contents := make([]*s3.Object, 0, len(output.Contents))
-					// 是否显示以 '/'
-					if lopts.ShowDir {
-						contents = output.Contents
-					} else {
-						for _, obj := range output.Contents {
-							if !strings.HasSuffix(aws.StringValue(obj.Key), "/") {
-								contents = append(contents, obj)
-							}
-						}
-					}
-
-					count += int64(len(contents))
+					count += int64(len(output.Contents))
 
 					// do something
-					if err = fn(contents); err != nil {
+					if err = fn(output.Contents); err != nil {
 						return false
 					}
 

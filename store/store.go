@@ -229,8 +229,6 @@ type ListOptions struct {
 	Limit int64
 	// Recursive 递归轮询子文件夹
 	Recursive bool
-	// ShowDir 显示文件夹（文件夹单独作为一个 Object）
-	ShowDir bool
 }
 
 type ListOption func(o *ListOptions)
@@ -240,7 +238,6 @@ func DefaultListOptions() *ListOptions {
 	return &ListOptions{
 		Context:   defaultContext,
 		Limit:     defaultListLimit,
-		ShowDir:   false,
 		Recursive: true,
 	}
 }
@@ -255,13 +252,6 @@ func ListBucket(bucket string) ListOption {
 func ListLimit(limit int64) ListOption {
 	return func(o *ListOptions) {
 		o.Limit = limit
-	}
-}
-
-// ListShowDir .
-func ListShowDir() ListOption {
-	return func(o *ListOptions) {
-		o.ShowDir = true
 	}
 }
 
