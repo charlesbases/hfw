@@ -94,7 +94,7 @@ func (o *object) Decoding(pointer interface{}) error {
 func readCloser(rc io.ReadCloser, size int64, opts ...ObjectOption) *object {
 	var object = &object{
 		rc:   rc,
-		ct:   content.TYPE_STREAM,
+		ct:   content.Stream,
 		size: size,
 	}
 	for _, opt := range opts {
@@ -127,7 +127,7 @@ func File(filepath string) store.Object {
 		stat, _ := file.Stat()
 		return &object{
 			rs:   file,
-			ct:   content.TYPE_STREAM,
+			ct:   content.Stream,
 			df:   func() { file.Close() },
 			size: stat.Size(),
 		}
@@ -138,7 +138,7 @@ func File(filepath string) store.Object {
 func Bytes(v []byte) store.Object {
 	return &object{
 		rs:   bytes.NewReader(v),
-		ct:   content.TYPE_BYTES,
+		ct:   content.Bytes,
 		size: int64(len(v)),
 	}
 }
@@ -147,7 +147,7 @@ func Bytes(v []byte) store.Object {
 func ReadSeeker(rs io.ReadSeeker, size int64, opts ...ObjectOption) store.Object {
 	var object = &object{
 		rs:   rs,
-		ct:   content.TYPE_STREAM,
+		ct:   content.Stream,
 		size: size,
 	}
 	for _, opt := range opts {
@@ -167,7 +167,7 @@ func Boolean(v bool) store.Object {
 
 	return &object{
 		rs:   rs,
-		ct:   content.TYPE_TEXT,
+		ct:   content.Text,
 		size: 1,
 	}
 }
@@ -186,7 +186,7 @@ func Number(v interface{}) store.Object {
 func String(v string) store.Object {
 	return &object{
 		rs:   strings.NewReader(v),
-		ct:   content.TYPE_TEXT,
+		ct:   content.Text,
 		size: int64(len(v)),
 	}
 }
@@ -199,7 +199,7 @@ func MarshalJson(v interface{}) store.Object {
 	}
 	return &object{
 		rs:   bytes.NewReader(data),
-		ct:   content.TYPE_JSON,
+		ct:   content.Json,
 		size: int64(len(data)),
 	}
 }
@@ -212,7 +212,7 @@ func MarshalProto(v proto.Message) store.Object {
 	}
 	return &object{
 		rs:   bytes.NewReader(data),
-		ct:   content.TYPE_PROTO,
+		ct:   content.Proto,
 		size: int64(len(data)),
 	}
 }

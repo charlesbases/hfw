@@ -7,6 +7,9 @@ import (
 	"github.com/charlesbases/hfw/content"
 )
 
+// DefaultMarshaler default codec.Marshaler
+var DefaultMarshaler = NewMarshaler()
+
 type marshaler struct {
 	options *codec.Options
 }
@@ -36,5 +39,10 @@ func (m *marshaler) Unmarshal(d []byte, v interface{}) error {
 
 // ContentType .
 func (m *marshaler) ContentType() content.Type {
-	return content.TYPE_JSON
+	return content.Json
+}
+
+// Type .
+func (m *marshaler) Type() string {
+	return "json"
 }

@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+option go_package = ".;webcode";
+
+package webcode;
+
+message Error {
+  int32 code = 1;
+  string message = 2;
+}

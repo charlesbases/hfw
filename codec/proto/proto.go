@@ -10,6 +10,9 @@ import (
 
 var ErrInvalidType = errors.New("proto: not implemented")
 
+// DefaultMarshaler default codec.Marshaler
+var DefaultMarshaler = NewMarshaler()
+
 type marshaler struct {
 	options *codec.Options
 }
@@ -40,5 +43,10 @@ func (*marshaler) Unmarshal(data []byte, v interface{}) error {
 
 // ContentType .
 func (*marshaler) ContentType() content.Type {
-	return content.TYPE_PROTO
+	return content.Proto
+}
+
+// Type .
+func (m *marshaler) Type() string {
+	return "proto"
 }
