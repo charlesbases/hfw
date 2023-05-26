@@ -72,7 +72,7 @@ func (c *client) ping() {
 	}
 }
 
-func (c *client) Put(bucket, key string, obj storage.Object, opts ...storage.PutOption) error {
+func (c *client) PutObject(bucket, key string, obj storage.Object, opts ...storage.PutOption) error {
 	var popts = storage.DefaultPutOptions()
 	for _, opt := range opts {
 		opt(popts)
@@ -97,7 +97,7 @@ func (c *client) Put(bucket, key string, obj storage.Object, opts ...storage.Put
 	})
 }
 
-func (c *client) Get(bucket, key string, opts ...storage.GetOption) (storage.Object, error) {
+func (c *client) GetObject(bucket, key string, opts ...storage.GetOption) (storage.Object, error) {
 	var gopts = storage.DefaultGetOptions()
 	for _, opt := range opts {
 		opt(gopts)
@@ -120,60 +120,70 @@ func (c *client) Get(bucket, key string, opts ...storage.GetOption) (storage.Obj
 	return storage.ReadCloser(output.Body, aws.Int64Value(output.ContentLength), aws.TimeValue(output.LastModified)), nil
 }
 
-func (c *client) Del(bucket, key string, opts ...storage.DelOption) error {
+func (c *client) DelObject(bucket, key string, opts ...storage.DelOption) error {
 	var dopts = storage.DefaultDelOptions()
 	for _, opt := range opts {
 		opt(dopts)
 	}
 
+	if strings.HasSuffix(key, "/") {
+		logger.Errorf("[aws-s3] del(%s.%s) failed. %s", storage.ErrObjectKeyInvalidWithSuffix)
+		return storage.ErrObjectKeyInvalidWithSuffix
+	}
+
 	logger.Debugf("[aws-s3] del(%s.%s)", bucket, key)
 
-	switch strings.HasSuffix(key, "/") {
-	// delete object
-	case false:
-		if _, err := c.s3.DeleteObject(&s3.DeleteObjectInput{
-			Bucket:    aws.String(bucket),
-			Key:       aws.String(key),
-			VersionId: aws.String(dopts.VersionID),
-		}); err != nil {
-			logger.Errorf("[aws-s3] del(%s.%s) failed. %s", bucket, key, err.Error())
-			return err
-		}
-	// delete objects with the prefix
-	default:
-		objs, _ := c.List(bucket, key, storage.ListContext(dopts.Context))
-		go func() {
-			var (
-				count = 8
-
-				// 协程数
-				conct = make(chan struct{}, count)
-			)
-
-			objs.Handle(func(keys []*string) error {
-				select {
-				case conct <- struct{}{}:
-					go func(objkeys []*string) {
-						var items = make([]*s3.ObjectIdentifier, 0, len(objkeys))
-						for _, key := range objkeys {
-							items = append(items, &s3.ObjectIdentifier{
-								Key: key,
-							})
-						}
-
-						c.s3.DeleteObjectsWithContext(objs.Context(), &s3.DeleteObjectsInput{
-							Bucket: aws.String(bucket),
-							Delete: &s3.Delete{
-								Objects: items,
-								Quiet:   aws.Bool(true),
-							},
-						})
-					}(keys)
-				}
-				return nil
-			})
-		}()
+	if _, err := c.s3.DeleteObject(&s3.DeleteObjectInput{
+		Bucket:    aws.String(bucket),
+		Key:       aws.String(key),
+		VersionId: aws.String(dopts.VersionID),
+	}); err != nil {
+		logger.Errorf("[aws-s3] del(%s.%s)[key] failed. %s", bucket, key, err.Error())
+		return err
 	}
+	return nil
+}
+
+func (c *client) DelObjectsWithPrefix(bucket, prefix string, opts ...storage.DelOption) error {
+	var dopts = storage.DefaultDelOptions()
+	for _, opt := range opts {
+		opt(dopts)
+	}
+
+	logger.Debugf("[aws-s3] del(%s.%s.*)", bucket, prefix)
+
+	objs, _ := c.List(bucket, prefix, storage.ListContext(dopts.Context), storage.ListDisableDebug())
+	go func() {
+		var (
+			count = 8
+
+			// 协程数
+			conct = make(chan struct{}, count)
+		)
+
+		objs.Handle(func(keys []*string) error {
+			select {
+			case conct <- struct{}{}:
+				go func(objkeys []*string) {
+					var items = make([]*s3.ObjectIdentifier, 0, len(objkeys))
+					for _, key := range objkeys {
+						items = append(items, &s3.ObjectIdentifier{
+							Key: key,
+						})
+					}
+
+					c.s3.DeleteObjectsWithContext(objs.Context(), &s3.DeleteObjectsInput{
+						Bucket: aws.String(bucket),
+						Delete: &s3.Delete{
+							Objects: items,
+							Quiet:   aws.Bool(true),
+						},
+					})
+				}(keys)
+			}
+			return nil
+		})
+	}()
 	return nil
 }
 
@@ -183,11 +193,9 @@ func (c *client) List(bucket, prefix string, opts ...storage.ListOption) (storag
 		opt(lopts)
 	}
 
-	if !strings.HasSuffix(prefix, "/") {
-		prefix += "/"
+	if lopts.Debug {
+		logger.Debugf("[aws-s3] list(%s.%s.*)", bucket, prefix)
 	}
-
-	logger.Debugf("[aws-s3] list(%s.%s)", bucket, prefix)
 
 	// -1 < lopts.MaxKeys < defaultS3MaxKeys
 	var maxkeys = defaultS3MaxKeys

@@ -35,7 +35,7 @@ func Test(t *testing.T) {
 	start := time.Now()
 	total := 1000000
 	for i := 0; i < total; i++ {
-		cli.Put(bucket, fmt.Sprintf("testdata/data/a/%d", i), storage.String(now()))
+		cli.PutObject(bucket, fmt.Sprintf("testdata/data/a/%d", i), storage.String(now()))
 	}
 	logger.Info(time.Since(start))
 }
@@ -49,27 +49,27 @@ func TestPut(t *testing.T) {
 
 	// Put data
 	{
-		if err := cli.Put(bucket, "testdata/data/int", storage.Number(time.Now().UnixMilli())); err != nil {
+		if err := cli.PutObject(bucket, "testdata/data/int", storage.Number(time.Now().UnixMilli())); err != nil {
 			logger.Fatal(err)
 		}
-		if err := cli.Put(bucket, "testdata/data/float", storage.Number(math.Pi)); err != nil {
+		if err := cli.PutObject(bucket, "testdata/data/float", storage.Number(math.Pi)); err != nil {
 			logger.Fatal(err)
 		}
-		if err := cli.Put(bucket, "testdata/data/string", storage.String(now())); err != nil {
+		if err := cli.PutObject(bucket, "testdata/data/string", storage.String(now())); err != nil {
 			logger.Fatal(err)
 		}
-		if err := cli.Put(bucket, "testdata/data/boolean", storage.Boolean(true)); err != nil {
+		if err := cli.PutObject(bucket, "testdata/data/boolean", storage.Boolean(true)); err != nil {
 			logger.Fatal(err)
 		}
 	}
 
 	// Put message
-	if err := cli.Put(bucket, "testdata/data/mess", storage.MarshalJson(&Message{Pi: math.Pi, Date: now()})); err != nil {
+	if err := cli.PutObject(bucket, "testdata/data/mess", storage.MarshalJson(&Message{Pi: math.Pi, Date: now()})); err != nil {
 		logger.Fatal(err)
 	}
 
 	// Put file
-	if err := cli.Put(bucket, "testdata/data/file", storage.File("s3.go")); err != nil {
+	if err := cli.PutObject(bucket, "testdata/data/file", storage.File("s3.go")); err != nil {
 		logger.Fatal(err)
 	}
 
@@ -77,7 +77,7 @@ func TestPut(t *testing.T) {
 	file, _ := os.Open("s3_test.go")
 	defer file.Close()
 	stat, _ := file.Stat()
-	if err := cli.Put(bucket, "testdata/data/file", storage.ReadSeeker(file, stat.Size())); err != nil {
+	if err := cli.PutObject(bucket, "testdata/data/file", storage.ReadSeeker(file, stat.Size())); err != nil {
 		logger.Fatal(err)
 	}
 }
@@ -87,7 +87,7 @@ func TestGet(t *testing.T) {
 
 	{
 		key := "testdata/data/int"
-		if output, err := cli.Get(bucket, key); err != nil {
+		if output, err := cli.GetObject(bucket, key); err != nil {
 			logger.Fatal(err)
 		} else {
 			var obj int
@@ -100,7 +100,7 @@ func TestGet(t *testing.T) {
 	}
 	{
 		key := "testdata/data/float"
-		if output, err := cli.Get(bucket, key); err != nil {
+		if output, err := cli.GetObject(bucket, key); err != nil {
 			logger.Fatal(err)
 		} else {
 			var obj float64
@@ -113,7 +113,7 @@ func TestGet(t *testing.T) {
 	}
 	{
 		key := "testdata/data/string"
-		if output, err := cli.Get(bucket, key); err != nil {
+		if output, err := cli.GetObject(bucket, key); err != nil {
 			logger.Fatal(err)
 		} else {
 			var obj string
@@ -126,7 +126,7 @@ func TestGet(t *testing.T) {
 	}
 	{
 		key := "testdata/data/boolean"
-		if output, err := cli.Get(bucket, key); err != nil {
+		if output, err := cli.GetObject(bucket, key); err != nil {
 			logger.Fatal(err)
 		} else {
 			var obj bool
@@ -139,7 +139,7 @@ func TestGet(t *testing.T) {
 	}
 	{
 		key := "testdata/data/mess"
-		if output, err := cli.Get(bucket, key); err != nil {
+		if output, err := cli.GetObject(bucket, key); err != nil {
 			logger.Fatal(err)
 		} else {
 			var obj = new(Message)
@@ -152,30 +152,39 @@ func TestGet(t *testing.T) {
 	}
 }
 
-func TestDel(t *testing.T) {
+func TestDelKey(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, storage.Timeout(3))
 
 	key := "testdata/data/"
-	if err := cli.Del(bucket, key); err != nil {
+	if err := cli.DelObject(bucket, key); err != nil {
+		logger.Fatal(err)
+	}
+}
+
+func TestDelPrefix(t *testing.T) {
+	cli := NewClient(endpoint, accessKey, secretKey, storage.Timeout(3))
+
+	key := "testdata/data/f"
+	if err := cli.DelObjectsWithPrefix(bucket, key); err != nil {
 		logger.Fatal(err)
 	}
 
-	time.Sleep(time.Hour)
+	time.Sleep(time.Minute)
 }
 
 func TestList(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, storage.Timeout(3))
 
-	key := "testdata/data/a"
-	objs, err := cli.List(bucket, key, storage.ListMaxKeys(1001))
+	key := "testdata/data/"
+	objs, err := cli.List(bucket, key, storage.ListMaxKeys(1001) /*, storage.ListDisableRecursive()*/)
 	if err != nil {
 		logger.Fatal(err)
 	}
 	keys := objs.Keys()
+	logger.Debugf("==> %d", len(keys))
 	for _, key := range keys {
 		logger.Debug(*key)
 	}
-	logger.Debug(len(keys))
 }
 
 func TestIsExist(t *testing.T) {

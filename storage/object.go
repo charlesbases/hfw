@@ -289,7 +289,7 @@ func (o *objects) Compress(dst io.Writer) error {
 				defer swg.Done()
 
 				for _, key := range keys {
-					output, err := o.client.Get(o.bucket, *key, GetContext(o.ctx), GetDisableDebug())
+					output, err := o.client.GetObject(o.bucket, *key, GetContext(o.ctx), GetDisableDebug())
 					if output.DeferFunc() != nil {
 						defer output.DeferFunc()()
 					}
