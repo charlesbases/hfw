@@ -30,14 +30,12 @@ func now() string {
 }
 
 func Test(t *testing.T) {
-	logger.SetDefault(logger.WithMinLevel(logger.InfoLevel))
 	cli := NewClient(endpoint, accessKey, secretKey, storage.Timeout(3))
 
 	start := time.Now()
 	total := 1000000
 	for i := 0; i < total; i++ {
-		now := now()
-		cli.Put(bucket, fmt.Sprintf("testdata/data/a/%s", now), storage.String(now))
+		cli.Put(bucket, fmt.Sprintf("testdata/data/a/%d", i), storage.String(now()))
 	}
 	logger.Info(time.Since(start))
 }
@@ -168,14 +166,16 @@ func TestDel(t *testing.T) {
 func TestList(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, storage.Timeout(3))
 
-	key := "testdata/data/"
-	objs, err := cli.List(bucket, key, storage.ListMaxKeys(-1))
+	key := "testdata/data/a"
+	objs, err := cli.List(bucket, key, storage.ListMaxKeys(1001))
 	if err != nil {
 		logger.Fatal(err)
 	}
-	for _, key := range objs.Keys() {
+	keys := objs.Keys()
+	for _, key := range keys {
 		logger.Debug(*key)
 	}
+	logger.Debug(len(keys))
 }
 
 func TestIsExist(t *testing.T) {

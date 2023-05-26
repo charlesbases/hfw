@@ -240,8 +240,9 @@ type objects struct {
 	ctx    context.Context
 	client Storage
 
-	bucket string
-	prefix string
+	bucket  string
+	prefix  string
+	maxkeys int64
 
 	handler func(fn func(keys []*string) error) error
 }
@@ -259,7 +260,7 @@ func (o *objects) Handle(fn func(keys []*string) error) error {
 }
 
 func (o *objects) Keys() []*string {
-	var all = make([]*string, 0)
+	var all = make([]*string, 0, o.maxkeys)
 	o.Handle(func(keys []*string) error {
 		all = append(all, keys...)
 		return nil
@@ -288,7 +289,7 @@ func (o *objects) Compress(dst io.Writer) error {
 				defer swg.Done()
 
 				for _, key := range keys {
-					output, err := o.client.Get(o.bucket, *key, GetContext(o.ctx))
+					output, err := o.client.Get(o.bucket, *key, GetContext(o.ctx), GetDisableDebug())
 					if output.DeferFunc() != nil {
 						defer output.DeferFunc()()
 					}
@@ -342,12 +343,13 @@ func (r *recorder) closing() {
 }
 
 // ListObjectsPages .
-func ListObjectsPages(ctx context.Context, client Storage, bucket string, prefix string, handler func(fn func(keys []*string) error) error) Objects {
+func ListObjectsPages(ctx context.Context, client Storage, bucket string, prefix string, maxkeys int64, handler func(fn func(keys []*string) error) error) Objects {
 	return &objects{
 		ctx:     ctx,
 		client:  client,
 		bucket:  bucket,
 		prefix:  prefix,
+		maxkeys: maxkeys,
 		handler: handler,
 	}
 }

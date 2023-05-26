@@ -103,7 +103,9 @@ func (c *client) Get(bucket, key string, opts ...storage.GetOption) (storage.Obj
 		opt(gopts)
 	}
 
-	logger.Debugf("[aws-s3] get(%s.%s)", bucket, key)
+	if gopts.Debug {
+		logger.Debugf("[aws-s3] get(%s.%s)", bucket, key)
+	}
 
 	output, err := c.s3.GetObject(&s3.GetObjectInput{
 		Bucket:    aws.String(bucket),
@@ -193,7 +195,7 @@ func (c *client) List(bucket, prefix string, opts ...storage.ListOption) (storag
 		maxkeys = lopts.MaxKeys
 	}
 
-	return storage.ListObjectsPages(lopts.Context, c, bucket, prefix,
+	return storage.ListObjectsPages(lopts.Context, c, bucket, prefix, maxkeys,
 		func(fn func(keys []*string) error) error {
 			input := &s3.ListObjectsV2Input{
 				Bucket:    aws.String(bucket),

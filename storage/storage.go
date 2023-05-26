@@ -25,8 +25,6 @@ var (
 )
 
 var (
-	// ErrObjectTyoe unknown object type
-	ErrObjectTyoe = errors.New("unknown object type.")
 	// ErrObjectDecodingIncorrect incorrect object type
 	ErrObjectDecodingIncorrect = errors.New("object decoding failed. incorrect object type.")
 )
@@ -128,6 +126,8 @@ type GetOptions struct {
 	Context context.Context
 	// VersionID object version
 	VersionID string
+	// Debug show logger
+	Debug bool
 }
 
 type GetOption func(o *GetOptions)
@@ -136,6 +136,7 @@ type GetOption func(o *GetOptions)
 func DefaultGetOptions() *GetOptions {
 	return &GetOptions{
 		Context: defaultContext,
+		Debug:   true,
 	}
 }
 
@@ -150,6 +151,13 @@ func GetContext(ctx context.Context) GetOption {
 func GetVersion(version string) GetOption {
 	return func(o *GetOptions) {
 		o.VersionID = version
+	}
+}
+
+// GetDisableDebug .
+func GetDisableDebug() GetOption {
+	return func(o *GetOptions) {
+		o.Debug = false
 	}
 }
 
