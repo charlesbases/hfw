@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/charlesbases/hfw/content"
 	"github.com/charlesbases/hfw/download"
@@ -20,6 +22,7 @@ type Object interface {
 	Error() error
 	DeferFunc() func()
 
+	Modify() time.Time
 	ContentType() content.Type
 	ContentLength() int64
 
@@ -35,6 +38,7 @@ type object struct {
 	rs io.ReadSeeker
 	rc io.ReadCloser
 
+	modify        time.Time
 	contentType   content.Type
 	contentLength int64
 
@@ -68,6 +72,10 @@ func (o *object) ContentLength() int64 {
 
 func (o *object) DeferFunc() func() {
 	return o.deferFunc
+}
+
+func (o *object) Modify() time.Time {
+	return o.modify
 }
 
 func (o *object) ContentType() content.Type {
@@ -154,6 +162,21 @@ func String(v string) Object {
 	}
 }
 
+// File .
+func File(name string) Object {
+	if file, err := os.Open(name); err != nil {
+		return &object{err: err}
+	} else {
+		stat, _ := file.Stat()
+		return &object{
+			rs:            file,
+			contentType:   content.Stream,
+			contentLength: stat.Size(),
+			deferFunc:     func() { file.Close() },
+		}
+	}
+}
+
 // MarshalJson .
 func MarshalJson(v interface{}) Object {
 	data, err := json.Marshal(v)
@@ -180,11 +203,22 @@ func MarshalProto(v proto.Message) Object {
 	}
 }
 
-// ReadCloser .
-func ReadCloser(rc io.ReadCloser) Object {
+// ReadSeeker .
+func ReadSeeker(rs io.ReadSeeker, contentLength int64) Object {
 	return &object{
-		rc:        rc,
-		deferFunc: func() { rc.Close() },
+		rs:            rs,
+		contentType:   content.Stream,
+		contentLength: contentLength,
+	}
+}
+
+// ReadCloser .
+func ReadCloser(rc io.ReadCloser, contentLength int64, modify time.Time) Object {
+	return &object{
+		rc:            rc,
+		modify:        modify,
+		contentLength: contentLength,
+		deferFunc:     func() { rc.Close() },
 	}
 }
 
@@ -266,8 +300,11 @@ func (o *objects) Compress(dst io.Writer) error {
 					}
 
 					if err := r.writer.Write(&download.Header{
-						Name:   strings.Replace(*key, o.prefix, ".", 1),
+						Name:   strings.Replace(*key, o.prefix, "./", 1),
+						Size:   output.ContentLength(),
+						Mode:   os.O_RDWR,
 						Reader: output.ReadCloser(),
+						Modify: output.Modify(),
 					}); err != nil {
 						r.closing()
 						logger.Errorf(`[aws-s3] compress failed. "%s.%s" %s`, o.bucket, *key, err.Error())

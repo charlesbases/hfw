@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -13,7 +14,12 @@ import (
 	"github.com/charlesbases/logger"
 )
 
-const defaultS3MaxKeys int64 = 1000
+const (
+	// object not found
+	notFound = "NotFound"
+
+	defaultS3MaxKeys int64 = 1000
+)
 
 // client .
 type client struct {
@@ -64,7 +70,6 @@ func (c *client) ping() {
 	if _, err := c.s3.ListBuckets(&s3.ListBucketsInput{}); err != nil {
 		logger.Fatalf(`[aws-s3] dial "%s" failed.`, c.s3.Endpoint)
 	}
-	logger.Infof(`[aws-s3] "%s" connection ready.`)
 }
 
 func (c *client) Put(bucket, key string, obj storage.Object, opts ...storage.PutOption) error {
@@ -110,7 +115,7 @@ func (c *client) Get(bucket, key string, opts ...storage.GetOption) (storage.Obj
 		return nil, err
 	}
 
-	return storage.ReadCloser(output.Body), nil
+	return storage.ReadCloser(output.Body, aws.Int64Value(output.ContentLength), aws.TimeValue(output.LastModified)), nil
 }
 
 func (c *client) Del(bucket, key string, opts ...storage.DelOption) error {
@@ -188,7 +193,7 @@ func (c *client) List(bucket, prefix string, opts ...storage.ListOption) (storag
 		maxkeys = lopts.MaxKeys
 	}
 
-	return storage.ListObjectsPages(lopts.Context, c, bucket, strings.TrimSuffix(prefix, "/"),
+	return storage.ListObjectsPages(lopts.Context, c, bucket, prefix,
 		func(fn func(keys []*string) error) error {
 			input := &s3.ListObjectsV2Input{
 				Bucket:    aws.String(bucket),
@@ -232,4 +237,40 @@ func (c *client) List(bucket, prefix string, opts ...storage.ListOption) (storag
 					return count != lopts.MaxKeys
 				})
 		}), nil
+}
+
+func (c *client) IsExist(bucket, key string, opts ...storage.GetOption) (bool, error) {
+	var gopts = storage.DefaultGetOptions()
+	for _, opt := range opts {
+		opt(gopts)
+	}
+
+	_, err := c.s3.HeadObject(&s3.HeadObjectInput{
+		Bucket:    aws.String(bucket),
+		Key:       aws.String(key),
+		VersionId: aws.String(gopts.VersionID),
+	})
+	if err != nil {
+		// not found
+		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == notFound {
+			return false, nil
+		}
+		// others error
+		return false, err
+	}
+	return true, nil
+}
+
+func (c *client) Presign(bucket, key string, opts ...storage.PresignOption) (string, error) {
+	var popts = storage.DefaultPresignOptions()
+	for _, opt := range opts {
+		opt(popts)
+	}
+
+	request, _ := c.s3.GetObjectRequest(&s3.GetObjectInput{
+		Bucket:    aws.String(bucket),
+		Key:       aws.String(key),
+		VersionId: aws.String(popts.VersionID),
+	})
+	return request.Presign(popts.Expires)
 }

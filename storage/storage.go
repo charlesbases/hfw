@@ -13,6 +13,8 @@ const (
 	defaultListMaxKeys = -1
 	// defaultListRecursive 默认获取子文件夹对象
 	defaultListRecursive = true
+	// defaultPresignExpire default
+	defaultPresignExpire = time.Hour * 24
 )
 
 var (
@@ -38,6 +40,10 @@ type Storage interface {
 	Del(bucket, key string, opts ...DelOption) error
 	// List get Objects with prefix
 	List(bucket, prefix string, opts ...ListOption) (Objects, error)
+	// IsExist query whether the object exists
+	IsExist(bucket, key string, opts ...GetOption) (bool, error)
+	// Presign url of object
+	Presign(bucket, key string, opts ...PresignOption) (string, error)
 }
 
 // Options .
@@ -219,5 +225,46 @@ func ListMaxKeys(n int64) ListOption {
 func ListDisableRecursive() ListOption {
 	return func(o *ListOptions) {
 		o.Recursive = false
+	}
+}
+
+// PresignOptions .
+type PresignOptions struct {
+	// Context .
+	Context context.Context
+	// VersionID data version
+	VersionID string
+	// Expires expires time (s)
+	Expires time.Duration
+}
+
+type PresignOption func(o *PresignOptions)
+
+// DefaultPresignOptions .
+func DefaultPresignOptions() *PresignOptions {
+	return &PresignOptions{
+		Context: defaultContext,
+		Expires: defaultPresignExpire,
+	}
+}
+
+// PresignContext .
+func PresignContext(ctx context.Context) PresignOption {
+	return func(o *PresignOptions) {
+		o.Context = ctx
+	}
+}
+
+// PresignVersionID .
+func PresignVersionID(ver string) PresignOption {
+	return func(o *PresignOptions) {
+		o.VersionID = ver
+	}
+}
+
+// PresignExpires .
+func PresignExpires(seconds int64) PresignOption {
+	return func(o *PresignOptions) {
+		o.Expires = time.Second * time.Duration(seconds)
 	}
 }
