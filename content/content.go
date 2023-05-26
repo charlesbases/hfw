@@ -1,30 +1,33 @@
 package content
 
-type Type string
+type Type int8
+
+const DefaultContentType Type = Json
 
 const (
-	// Zip zip
-	Zip Type = "application/zip"
-	// Text text
-	Text Type = "application/text"
-	// Json json
-	Json Type = "application/json"
-	// Bytes bytes
-	Bytes Type = "application/bytes"
-	// Proto google protocol buffers
-	Proto Type = "application/proto"
-	// Stream 二进制数据流，通常用于上传文件
-	Stream Type = "application/octet-stream"
-	// FromData 表单数据格式，支持文件上传，通常用于上传文件
-	FromData Type = "multiparty/from-data"
+	Text Type = iota
+	Json
+	Proto
+	Bytes
+	Stream
+	FromData
+	Zip
 )
 
-// String .
-func (t Type) String() string {
-	return string(t)
+var contents = map[Type]string{
+	Zip:      "application/zip",
+	Text:     "application/text",
+	Json:     "application/json",
+	Bytes:    "application/bytes",
+	Proto:    "application/proto",
+	Stream:   "application/octet-stream",
+	FromData: "multiparty/from-data",
 }
 
 // String .
-func String(ct string) Type {
-	return Type(ct)
+func (t Type) String() string {
+	if str, fond := contents[t]; fond {
+		return str
+	}
+	return contents[DefaultContentType]
 }
