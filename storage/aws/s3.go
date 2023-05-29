@@ -3,7 +3,6 @@ package aws
 import (
 	"crypto/tls"
 	"net/http"
-	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -97,6 +96,11 @@ func (c *client) PutObject(bucket, key string, obj storage.Object, opts ...stora
 	})
 }
 
+func (c *client) PutObjectsWithFolder(bucker, folder string) error {
+	// TODO implement me
+	panic("implement me")
+}
+
 func (c *client) GetObject(bucket, key string, opts ...storage.GetOption) (storage.Object, error) {
 	var gopts = storage.DefaultGetOptions()
 	for _, opt := range opts {
@@ -124,11 +128,6 @@ func (c *client) DelObject(bucket, key string, opts ...storage.DelOption) error 
 	var dopts = storage.DefaultDelOptions()
 	for _, opt := range opts {
 		opt(dopts)
-	}
-
-	if strings.HasSuffix(key, "/") {
-		logger.Errorf("[aws-s3] del(%s.%s) failed. %s", storage.ErrObjectKeyInvalidWithSuffix)
-		return storage.ErrObjectKeyInvalidWithSuffix
 	}
 
 	logger.Debugf("[aws-s3] del(%s.%s)", bucket, key)

@@ -27,23 +27,28 @@ var (
 var (
 	// ErrObjectDecodingIncorrect incorrect object type
 	ErrObjectDecodingIncorrect = errors.New("object decoding failed. incorrect object type.")
-	// ErrObjectKeyInvalidWithSuffix invalid object key with suffix
-	ErrObjectKeyInvalidWithSuffix = errors.New("the key cannot end with '/'")
 )
 
 type Storage interface {
 	// PutObject put Object
 	PutObject(bucket, key string, obj Object, opts ...PutOption) error
+	// PutObjectsWithFolder put objects with folder
+	PutObjectsWithFolder(bucker, folder string) error
+
 	// GetObject get Object
 	GetObject(bucket, key string, opts ...GetOption) (Object, error)
+
 	// DelObject delete Object of key
 	DelObject(bucket, key string, opts ...DelOption) error
 	// DelObjectsWithPrefix delete Object with prefix
 	DelObjectsWithPrefix(bucket, prefix string, opts ...DelOption) error
+
 	// List get Objects with prefix
 	List(bucket, prefix string, opts ...ListOption) (Objects, error)
+
 	// IsExist query whether the object exists
 	IsExist(bucket, key string, opts ...GetOption) (bool, error)
+
 	// Presign url of object
 	Presign(bucket, key string, opts ...PresignOption) (string, error)
 }
