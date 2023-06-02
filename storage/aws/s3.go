@@ -2,7 +2,9 @@ package aws
 
 import (
 	"crypto/tls"
+	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -10,11 +12,12 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/charlesbases/hfw/storage"
+	"github.com/charlesbases/hfw/xpath"
 	"github.com/charlesbases/logger"
 )
 
 const (
-	// object not found
+	// error: NotFound
 	notFound = "NotFound"
 
 	defaultS3MaxKeys int64 = 1000
@@ -28,8 +31,7 @@ type client struct {
 
 // NewClient .
 func NewClient(endpoint string, accessKey string, secretKey string, opts ...storage.Option) storage.Storage {
-	c := &client{options: storage.DefaultOptions()}
-	c.configure(opts...)
+	c := &client{options: storage.ParseOptions(opts...)}
 
 	// new client
 	session, err := session.NewSession(&aws.Config{
@@ -57,24 +59,21 @@ func NewClient(endpoint string, accessKey string, secretKey string, opts ...stor
 	return c
 }
 
-// configure .
-func (c *client) configure(opts ...storage.Option) {
-	for _, opt := range opts {
-		opt(c.options)
-	}
-}
-
 // ping .
 func (c *client) ping() {
 	if _, err := c.s3.ListBuckets(&s3.ListBucketsInput{}); err != nil {
-		logger.Fatalf(`[aws-s3] dial "%s" failed.`, c.s3.Endpoint)
+		logger.Fatalf(`[aws-s3] dial "%s" failed. %s`, c.s3.Endpoint, err.Error())
 	}
 }
 
 func (c *client) PutObject(bucket, key string, obj storage.Object, opts ...storage.PutOption) error {
-	var popts = storage.DefaultPutOptions()
-	for _, opt := range opts {
-		opt(popts)
+	// var popts = storage.ParsePutOptions(opts...)
+
+	if err := storage.CheckBucketName(bucket); err != nil {
+		return err
+	}
+	if err := storage.CheckObjectName(key); err != nil {
+		return err
 	}
 
 	logger.Debugf("[aws-s3] put(%s.%s)", bucket, key)
@@ -89,22 +88,39 @@ func (c *client) PutObject(bucket, key string, obj storage.Object, opts ...stora
 			ContentLength: aws.Int64(obj.ContentLength()),
 		})
 		if err != nil {
-			logger.Errorf("[aws-s3] put(%s.%s) failed. %v", bucket, key, err)
+			logger.Errorf("[aws-s3] put(%s.%s) failed. %s", bucket, key, err.Error())
 			return err
 		}
 		return nil
 	})
 }
 
-func (c *client) PutObjectsWithFolder(bucker, folder string) error {
-	// TODO implement me
-	panic("implement me")
+func (c *client) PutFolder(bucket, prefix, root string, opts ...storage.PutOption) error {
+	// var popts = storage.ParsePutOptions(opts...)
+
+	if err := storage.CheckBucketName(bucket); err != nil {
+		return err
+	}
+
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
+	logger.Debugf("[aws-s3] put(%s.%s.*)", bucket, prefix)
+
+	return xpath.NewRoot(root).Walk(func(path string, info fs.FileInfo) error {
+		return nil
+	})
 }
 
 func (c *client) GetObject(bucket, key string, opts ...storage.GetOption) (storage.Object, error) {
-	var gopts = storage.DefaultGetOptions()
-	for _, opt := range opts {
-		opt(gopts)
+	var gopts = storage.ParseGetOptions(opts...)
+
+	if err := storage.CheckBucketName(bucket); err != nil {
+		return nil, err
+	}
+	if err := storage.CheckObjectName(key); err != nil {
+		return nil, err
 	}
 
 	if gopts.Debug {
@@ -117,17 +133,26 @@ func (c *client) GetObject(bucket, key string, opts ...storage.GetOption) (stora
 		VersionId: aws.String(gopts.VersionID),
 	})
 	if err != nil {
-		logger.Errorf("[aws-s3] get(%s.%s) failed. %v", bucket, key, err)
+		logger.Errorf("[aws-s3] get(%s.%s) failed. %s", bucket, key, err.Error())
 		return nil, err
 	}
 
 	return storage.ReadCloser(output.Body, aws.Int64Value(output.ContentLength), aws.TimeValue(output.LastModified)), nil
 }
 
+func (c *client) GetPrefix(bucket, prefix string, opts ...storage.GetOption) (storage.Objects, error) {
+	// var gopts = storage.ParseGetOptions(opts...)
+	panic(nil)
+}
+
 func (c *client) DelObject(bucket, key string, opts ...storage.DelOption) error {
-	var dopts = storage.DefaultDelOptions()
-	for _, opt := range opts {
-		opt(dopts)
+	var dopts = storage.ParseDelOptions(opts...)
+
+	if err := storage.CheckBucketName(bucket); err != nil {
+		return err
+	}
+	if err := storage.CheckObjectName(key); err != nil {
+		return err
 	}
 
 	logger.Debugf("[aws-s3] del(%s.%s)", bucket, key)
@@ -143,10 +168,11 @@ func (c *client) DelObject(bucket, key string, opts ...storage.DelOption) error 
 	return nil
 }
 
-func (c *client) DelObjectsWithPrefix(bucket, prefix string, opts ...storage.DelOption) error {
-	var dopts = storage.DefaultDelOptions()
-	for _, opt := range opts {
-		opt(dopts)
+func (c *client) DelPrefix(bucket, prefix string, opts ...storage.DelOption) error {
+	var dopts = storage.ParseDelOptions(opts...)
+
+	if err := storage.CheckBucketName(bucket); err != nil {
+		return err
 	}
 
 	logger.Debugf("[aws-s3] del(%s.%s.*)", bucket, prefix)
@@ -187,9 +213,10 @@ func (c *client) DelObjectsWithPrefix(bucket, prefix string, opts ...storage.Del
 }
 
 func (c *client) List(bucket, prefix string, opts ...storage.ListOption) (storage.Objects, error) {
-	var lopts = storage.DefaultListOptions()
-	for _, opt := range opts {
-		opt(lopts)
+	var lopts = storage.ParseListOptions(opts...)
+
+	if err := storage.CheckBucketName(bucket); err != nil {
+		return nil, err
 	}
 
 	if lopts.Debug {
@@ -249,9 +276,13 @@ func (c *client) List(bucket, prefix string, opts ...storage.ListOption) (storag
 }
 
 func (c *client) IsExist(bucket, key string, opts ...storage.GetOption) (bool, error) {
-	var gopts = storage.DefaultGetOptions()
-	for _, opt := range opts {
-		opt(gopts)
+	var gopts = storage.ParseGetOptions(opts...)
+
+	if err := storage.CheckBucketName(bucket); err != nil {
+		return false, err
+	}
+	if err := storage.CheckObjectName(key); err != nil {
+		return false, err
 	}
 
 	_, err := c.s3.HeadObject(&s3.HeadObjectInput{
@@ -271,9 +302,13 @@ func (c *client) IsExist(bucket, key string, opts ...storage.GetOption) (bool, e
 }
 
 func (c *client) Presign(bucket, key string, opts ...storage.PresignOption) (string, error) {
-	var popts = storage.DefaultPresignOptions()
-	for _, opt := range opts {
-		opt(popts)
+	var popts = storage.ParsePresignOptions(opts...)
+
+	if err := storage.CheckBucketName(bucket); err != nil {
+		return "", err
+	}
+	if err := storage.CheckObjectName(key); err != nil {
+		return "", err
 	}
 
 	request, _ := c.s3.GetObjectRequest(&s3.GetObjectInput{

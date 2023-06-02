@@ -32,16 +32,18 @@ var (
 type Storage interface {
 	// PutObject put Object
 	PutObject(bucket, key string, obj Object, opts ...PutOption) error
-	// PutObjectsWithFolder put objects with folder
-	PutObjectsWithFolder(bucker, folder string) error
+	// PutFolder put Objects with root
+	PutFolder(bucket, prefix, root string, opts ...PutOption) error
 
-	// GetObject get Object
+	// GetObject get Object with key
 	GetObject(bucket, key string, opts ...GetOption) (Object, error)
+	// GetPrefix get Objects with prefix
+	GetPrefix(bucket, prefix string, opts ...GetOption) (Objects, error)
 
 	// DelObject delete Object of key
 	DelObject(bucket, key string, opts ...DelOption) error
-	// DelObjectsWithPrefix delete Object with prefix
-	DelObjectsWithPrefix(bucket, prefix string, opts ...DelOption) error
+	// DelPrefix delete Objects with prefix
+	DelPrefix(bucket, prefix string, opts ...DelOption) error
 
 	// List get Objects with prefix
 	List(bucket, prefix string, opts ...ListOption) (Objects, error)
@@ -67,14 +69,18 @@ type Options struct {
 
 type Option func(o *Options)
 
-// DefaultOptions .
-func DefaultOptions() *Options {
-	return &Options{
+// ParseOptions .
+func ParseOptions(opts ...Option) *Options {
+	var o = &Options{
 		Context: defaultContext,
 		Timeout: defaultTimeout,
 		Region:  defaultRegion,
 		UseSSL:  false,
 	}
+	for _, opt := range opts {
+		opt(o)
+	}
+	return o
 }
 
 // Context .
@@ -115,11 +121,15 @@ type PutOptions struct {
 
 type PutOption func(o *PutOptions)
 
-// DefaultPutOptions .
-func DefaultPutOptions() *PutOptions {
-	return &PutOptions{
+// ParsePutOptions .
+func ParsePutOptions(opts ...PutOption) *PutOptions {
+	var o = &PutOptions{
 		Context: defaultContext,
 	}
+	for _, opt := range opts {
+		opt(o)
+	}
+	return o
 }
 
 // PutContext .
@@ -141,12 +151,16 @@ type GetOptions struct {
 
 type GetOption func(o *GetOptions)
 
-// DefaultGetOptions .
-func DefaultGetOptions() *GetOptions {
-	return &GetOptions{
+// ParseGetOptions .
+func ParseGetOptions(opts ...GetOption) *GetOptions {
+	var o = &GetOptions{
 		Context: defaultContext,
 		Debug:   true,
 	}
+	for _, opt := range opts {
+		opt(o)
+	}
+	return o
 }
 
 // GetContext .
@@ -180,11 +194,15 @@ type DelOptions struct {
 
 type DelOption func(o *DelOptions)
 
-// DefaultDelOptions .
-func DefaultDelOptions() *DelOptions {
-	return &DelOptions{
+// ParseDelOptions .
+func ParseDelOptions(opts ...DelOption) *DelOptions {
+	var o = &DelOptions{
 		Context: defaultContext,
 	}
+	for _, opt := range opts {
+		opt(o)
+	}
+	return o
 }
 
 // DelContext .
@@ -215,14 +233,18 @@ type ListOptions struct {
 
 type ListOption func(o *ListOptions)
 
-// DefaultListOptions .
-func DefaultListOptions() *ListOptions {
-	return &ListOptions{
+// ParseListOptions .
+func ParseListOptions(opts ...ListOption) *ListOptions {
+	var o = &ListOptions{
 		Context:   defaultContext,
 		MaxKeys:   defaultListMaxKeys,
 		Recursive: defaultListRecursive,
 		Debug:     true,
 	}
+	for _, opt := range opts {
+		opt(o)
+	}
+	return o
 }
 
 // ListContext .
@@ -267,12 +289,16 @@ type PresignOptions struct {
 
 type PresignOption func(o *PresignOptions)
 
-// DefaultPresignOptions .
-func DefaultPresignOptions() *PresignOptions {
-	return &PresignOptions{
+// ParsePresignOptions .
+func ParsePresignOptions(opts ...PresignOption) *PresignOptions {
+	var o = &PresignOptions{
 		Context: defaultContext,
 		Expires: defaultPresignExpire,
 	}
+	for _, opt := range opts {
+		opt(o)
+	}
+	return o
 }
 
 // PresignContext .

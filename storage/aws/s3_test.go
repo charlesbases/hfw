@@ -164,8 +164,8 @@ func TestDelKey(t *testing.T) {
 func TestDelPrefix(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, storage.Timeout(3))
 
-	key := "testdata/data/f"
-	if err := cli.DelObjectsWithPrefix(bucket, key); err != nil {
+	key := "testdata/auth"
+	if err := cli.DelPrefix(bucket, key); err != nil {
 		logger.Fatal(err)
 	}
 

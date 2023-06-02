@@ -6,6 +6,7 @@ const DefaultContentType Type = Json
 
 const (
 	Text Type = iota
+	Yaml
 	Json
 	Proto
 	Bytes
@@ -16,6 +17,7 @@ const (
 
 var contents = map[Type]string{
 	Zip:      "application/zip",
+	Yaml:     "application/yaml",
 	Text:     "application/text",
 	Json:     "application/json",
 	Bytes:    "application/bytes",
