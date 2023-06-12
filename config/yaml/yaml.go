@@ -1,7 +1,6 @@
 package yaml
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/charlesbases/hfw/config"
@@ -9,16 +8,15 @@ import (
 )
 
 // defaultConfigurationFilePath 默认配置文件路径
-const defaultConfigurationFilePath = "configuration.yaml"
+const defaultConfigurationFilePath = "config.yaml"
 
 // p .
 type p struct {
-	pointer interface{}
 	options *config.Options
 }
 
-// NewParser .
-func NewParser(pointer interface{}, opts ...config.Option) config.Parser {
+// NewDecoder .
+func NewDecoder(opts ...config.Option) config.Decoder {
 	var options = new(config.Options)
 	for _, opt := range opts {
 		opt(options)
@@ -28,16 +26,16 @@ func NewParser(pointer interface{}, opts ...config.Option) config.Parser {
 		options.FilePath = defaultConfigurationFilePath
 	}
 
-	return &p{pointer: pointer, options: options}
+	return &p{options: options}
 }
 
-// Decoder .
-func (p *p) Decoder() {
-	content, err := os.ReadFile(p.options.FilePath)
+// Decode .
+func (p *p) Decode(v interface{}) error {
+	file, err := os.Open(p.options.FilePath)
+	defer file.Close()
+
 	if err != nil {
-		panic(fmt.Sprintf("configuration: %v", err))
+		return err
 	}
-	if err := yaml.Unmarshal(content, p.pointer); err != nil {
-		panic(fmt.Sprintf("configuration: %v", err))
-	}
+	return yaml.NewDecoder(file).Decode(v)
 }

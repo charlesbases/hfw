@@ -1,6 +1,6 @@
 package config
 
-type Parser interface {
-	// Decoder 加载配置文件
-	Decoder()
+type Decoder interface {
+	// Decode 加载配置文件
+	Decode(v interface{}) error
 }
