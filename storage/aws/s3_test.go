@@ -176,7 +176,7 @@ func TestList(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, storage.Timeout(3))
 
 	key := "testdata/data/"
-	objs, err := cli.List(bucket, key, storage.ListMaxKeys(1001) /*, storage.ListDisableRecursive()*/)
+	objs, err := cli.ListObjects(bucket, key, storage.ListMaxKeys(1001) /*, storage.ListDisableRecursive()*/)
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestList(t *testing.T) {
 func TestIsExist(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, storage.Timeout(3))
 
-	key := "testdata/data/string"
+	key := "testdata/auth/"
 	isExist, err := cli.IsExist(bucket, key)
 	if err != nil {
 		logger.Fatal(err)
@@ -213,7 +213,7 @@ func TestListCompress(t *testing.T) {
 	cli := NewClient(endpoint, accessKey, secretKey, storage.Timeout(3))
 
 	key := "testdata/data/"
-	objs, err := cli.List(bucket, key)
+	objs, err := cli.ListObjects(bucket, key)
 	if err != nil {
 		logger.Fatal(err)
 	}

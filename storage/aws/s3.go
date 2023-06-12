@@ -140,11 +140,6 @@ func (c *client) GetObject(bucket, key string, opts ...storage.GetOption) (stora
 	return storage.ReadCloser(output.Body, aws.Int64Value(output.ContentLength), aws.TimeValue(output.LastModified)), nil
 }
 
-func (c *client) GetPrefix(bucket, prefix string, opts ...storage.GetOption) (storage.Objects, error) {
-	// var gopts = storage.ParseGetOptions(opts...)
-	panic(nil)
-}
-
 func (c *client) DelObject(bucket, key string, opts ...storage.DelOption) error {
 	var dopts = storage.ParseDelOptions(opts...)
 
@@ -177,7 +172,7 @@ func (c *client) DelPrefix(bucket, prefix string, opts ...storage.DelOption) err
 
 	logger.Debugf("[aws-s3] del(%s.%s.*)", bucket, prefix)
 
-	objs, _ := c.List(bucket, prefix, storage.ListContext(dopts.Context), storage.ListDisableDebug())
+	objs, _ := c.ListObjects(bucket, prefix, storage.ListContext(dopts.Context), storage.ListDisableDebug())
 	go func() {
 		var (
 			count = 8
@@ -212,7 +207,7 @@ func (c *client) DelPrefix(bucket, prefix string, opts ...storage.DelOption) err
 	return nil
 }
 
-func (c *client) List(bucket, prefix string, opts ...storage.ListOption) (storage.Objects, error) {
+func (c *client) ListObjects(bucket, prefix string, opts ...storage.ListOption) (storage.Objects, error) {
 	var lopts = storage.ParseListOptions(opts...)
 
 	if err := storage.CheckBucketName(bucket); err != nil {
@@ -281,23 +276,38 @@ func (c *client) IsExist(bucket, key string, opts ...storage.GetOption) (bool, e
 	if err := storage.CheckBucketName(bucket); err != nil {
 		return false, err
 	}
-	if err := storage.CheckObjectName(key); err != nil {
-		return false, err
+
+	switch strings.HasSuffix(key, "/") {
+	// object
+	case false:
+		_, err := c.s3.HeadObject(&s3.HeadObjectInput{
+			Bucket:    aws.String(bucket),
+			Key:       aws.String(key),
+			VersionId: aws.String(gopts.VersionID),
+		})
+		if err != nil {
+			// not found
+			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == notFound {
+				return false, nil
+			}
+			// others error
+			return false, err
+		}
+	// prefix
+	default:
+		objs, err := c.ListObjects(bucket, key, storage.ListDisableDebug(), storage.ListDisableRecursive(), storage.ListMaxKeys(1))
+		if err != nil {
+			return false, err
+		}
+
+		var isExist bool
+		objs.Handle(func(keys []*string) error {
+			isExist = true
+			return nil
+		})
+		return isExist, nil
 	}
 
-	_, err := c.s3.HeadObject(&s3.HeadObjectInput{
-		Bucket:    aws.String(bucket),
-		Key:       aws.String(key),
-		VersionId: aws.String(gopts.VersionID),
-	})
-	if err != nil {
-		// not found
-		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == notFound {
-			return false, nil
-		}
-		// others error
-		return false, err
-	}
 	return true, nil
 }
 

@@ -37,18 +37,17 @@ type Storage interface {
 
 	// GetObject get Object with key
 	GetObject(bucket, key string, opts ...GetOption) (Object, error)
-	// GetPrefix get Objects with prefix
-	GetPrefix(bucket, prefix string, opts ...GetOption) (Objects, error)
 
 	// DelObject delete Object of key
 	DelObject(bucket, key string, opts ...DelOption) error
 	// DelPrefix delete Objects with prefix
 	DelPrefix(bucket, prefix string, opts ...DelOption) error
 
-	// List get Objects with prefix
-	List(bucket, prefix string, opts ...ListOption) (Objects, error)
+	// ListObjects get Objects with prefix
+	ListObjects(bucket, prefix string, opts ...ListOption) (Objects, error)
 
 	// IsExist query whether the object exists
+	// If the query is prefixed, the key needs to end with '/'
 	IsExist(bucket, key string, opts ...GetOption) (bool, error)
 
 	// Presign url of object
